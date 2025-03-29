@@ -5,4 +5,4 @@ vim.opt.ttimeoutlen = 0
 vim.opt.laststatus = 3
 
 -- set the colorscheme
-vim.cmd("colorscheme kanagawa-wave")
+vim.cmd("colorscheme tokyonight-moon")

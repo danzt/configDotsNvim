@@ -66,6 +66,14 @@ return {
       },
     },
   },
+  {
+    "folke/which-key.nvim",
+    event = "VeryLazy",
+    opts = {
+      preset = "classic",
+      win = { border = "single" },
+    },
+  },
   -- {
   --   "LazyVim/LazyVim",
   --   opts = {
