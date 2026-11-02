@@ -1,0 +1,85 @@
+onboarding = false
+# agent_panel_sort = "spaces"
+
+# herdr configuration managed by Gentleman.Dots.
+# This file is copied into ~/.config/herdr/config.toml during installation.
+
+[theme]
+# Use a built-in dark theme with neutral foregrounds so Herdr does not inherit
+# Ghostty bright-black selected rows or Kanagawa's warm/yellow label text.
+name = "rose-pine-dawn"
+
+auto_switch = false
+[theme.custom]
+panel_bg = "#06080f"
+# Match Pi's Gentle theme, with a muted cyan for Herdr chrome.
+accent = "#6FA0AF"
+green = "#B7CC85"
+blue = "#6FA0AF"
+red = "#CB7C94"
+yellow = "#DEBA87"
+
+[ui]
+accent = "#6FA0AF"
+
+# Sidebar hidden by default (zero width) to save space on the laptop screen.
+# Toggle it with prefix+b.
+sidebar_start_collapsed = true
+sidebar_collapsed_mode = "hidden"
+
+# Distinct glyphs per agent state instead of plain color dots.
+status_indicators = "symbols"
+
+# Show which agent (claude/codex/etc.) owns each pane right on its border.
+show_agent_labels_on_pane_borders = true
+
+# Window/tab title shows host, workspace and tab at a glance.
+window_title = "{hostname}: {workspace} › {tab}"
+
+[ui.sidebar.spaces]
+# Breathing room between space entries.
+row_gap = 1
+# Git branch + status under each space, replacing the zjstatus info we lost from Zellij.
+rows = [["state_icon", "workspace"], ["branch", "git_status"]]
+
+[ui.sidebar.agents]
+row_gap = 1
+rows = [["state_icon", "workspace", "tab"], ["agent"]]
+
+[ui.sidebar.agents.rows_by_agent]
+# Extra row for Claude panes: shows the live terminal title (current task) too.
+claude = [["state_icon", "workspace", "tab"], ["terminal_title_stripped"], ["agent"]]
+
+[keys]
+# Match tmux/Zellij-style prefix muscle memory.
+prefix = "backtick"
+
+# AeroSpace's Mod is Caps Lock (Cmd+Ctrl+Alt via Karabiner), so plain Alt is
+# free for herdr. Never bind Cmd+Ctrl+Alt combos here — AeroSpace owns them.
+
+# Move between agents in the sidebar.
+# Avoid Herdr's built-in prefix+shift+j/k pane-swap bindings.
+previous_agent = "prefix+alt+k"
+next_agent = "prefix+alt+j"
+
+# Jump straight to agent N (1..9) as listed in the sidebar.
+# Shift+number did not reach Herdr reliably in the current terminal setup.
+focus_agent = "prefix+ctrl+1..9"
+
+# Create a new Space (workspace) quickly.
+new_workspace = "prefix+shift+n"
+
+# Move between Spaces (workspaces) directly with Option+1..9.
+indexed.workspaces = "alt"
+
+# Album art in the YT Music panel (ytrail) needs Kitty graphics passthrough.
+[experimental]
+kitty_graphics = true
+
+# Prefix + alt+m opens the YT Music panel as a popup; music keeps playing when it closes.
+[[keys.command]]
+key = "prefix+alt+m"
+type = "popup"
+command = "ytrail"
+width = "85%"
+height = "85%"
