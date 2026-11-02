@@ -8,19 +8,36 @@ local DIR = (vim.env.XDG_STATE_HOME or (vim.env.HOME .. "/.local/state")) .. "/c
 local WIDTH = 36
 local SPIN = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
-local S = { sess = nil, git = { branch = "", files = 0, add = 0, del = 0 }, win = nil, buf = nil, auto = true }
+local S = { sess = nil, git = { branch = "", files = 0, add = 0, del = 0, list = {} }, win = nil, buf = nil, auto = true }
 
--- Colors come from the active colorscheme so the rail always matches the theme.
+-- Colors come from the active colorscheme; every group carries the panel background so the
+-- header and rail read as solid blocks (Gentle Shell "float" style).
 local function highlights()
-  local links = {
+  local function get(name) return vim.api.nvim_get_hl(0, { name = name, link = false }) end
+  local bg = get("NormalFloat").bg or get("Normal").bg
+  local text = get("Normal").fg
+  local specs = {
     RailWork = "DiagnosticWarn", RailOk = "DiagnosticOk", RailWait = "DiagnosticError",
     RailAccent = "Title", RailMuted = "Comment", RailBranch = "Special", RailText = "Normal",
   }
-  for name, link in pairs(links) do vim.api.nvim_set_hl(0, name, { link = link, default = true }) end
+  for name, from in pairs(specs) do
+    vim.api.nvim_set_hl(0, name, { fg = get(from).fg or text, bg = bg, bold = name == "RailAccent" or nil })
+  end
+  vim.api.nvim_set_hl(0, "RailPanel", { fg = text, bg = bg })
 end
 
+-- Project of the Claude terminal (its cwd is in the buffer name: term://<cwd>//<pid>:<cmd>), which can
+-- differ from nvim's own cwd; falls back to nvim's cwd when there is no Claude terminal.
 local function root()
   local cwd = uv.cwd()
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local b = vim.api.nvim_win_get_buf(w)
+    local name = vim.api.nvim_buf_get_name(b)
+    if vim.bo[b].buftype == "terminal" and name:match("claude") then
+      local dir = name:match("^term://(.-)//%d+:")
+      if dir then cwd = vim.fn.expand(dir) break end
+    end
+  end
   return vim.fs.root(cwd, ".git") or cwd
 end
 
@@ -53,7 +70,9 @@ local function load_git()
   vim.system({ "git", "-C", r, "status", "--porcelain=v1", "-b" }, { text = true }, function(o)
     local lines = vim.split(o.stdout or "", "\n", { trimempty = true })
     local head = (lines[1] or ""):gsub("^## ", ""):gsub("%.%.%..*$", "")
-    vim.schedule(function() S.git.branch, S.git.files = head, math.max(#lines - 1, 0) end)
+    local list = {}
+    for i = 2, #lines do list[#list + 1] = { st = vim.trim(lines[i]:sub(1, 2)), path = lines[i]:sub(4) } end
+    vim.schedule(function() S.git.branch, S.git.files, S.git.list = head, #list, list end)
   end)
   vim.system({ "git", "-C", r, "diff", "--shortstat", "HEAD" }, { text = true }, function(o)
     local out = o.stdout or ""
@@ -84,7 +103,7 @@ end
 --- Winbar string for the Claude window (evaluated by %!v:lua).
 function M.header()
   local s = S.sess
-  local parts = { " %#RailAccent#✻ Claude ", state_chunk() }
+  local parts = { " %#RailAccent#✿ Claude ", state_chunk() }
   if S.git.branch ~= "" then
     parts[#parts + 1] = ("%%#RailMuted# │ %%#RailBranch# %s"):format((S.git.branch:gsub("%%", "%%%%")))
     if S.git.files > 0 then parts[#parts + 1] = "%#RailMuted# ±" .. S.git.files end
@@ -113,49 +132,115 @@ local function trunc(str, n)
   return vim.fn.strchars(str) > n and (vim.fn.strcharpart(str, 0, n - 1) .. "…") or str
 end
 
+-- A row is a list of { text, group } chunks; the rail buffer is built from them.
+local BAR = "▎"
+
+local function panel(title, subtitle, tone, body)
+  local rows = {}
+  local bar = { BAR .. " ", tone }
+  rows[#rows + 1] = { bar }
+  local head = { bar, { "✿ " .. title, "RailAccent" } }
+  if subtitle and subtitle ~= "" then
+    head[#head + 1] = { " · ", "RailMuted" }
+    head[#head + 1] = { subtitle, "RailMuted" }
+  end
+  rows[#rows + 1] = head
+  rows[#rows + 1] = { bar }
+  for _, r in ipairs(body) do
+    local row = { bar, { " ", "RailText" } }
+    for _, c in ipairs(r) do row[#row + 1] = c end
+    rows[#rows + 1] = row
+  end
+  rows[#rows + 1] = { bar }
+  rows[#rows + 1] = {}
+  return rows
+end
+
+local function kv(label, value, group)
+  return { { ("%-8s"):format(label), "RailMuted" }, { value, group or "RailText" } }
+end
+
 local function card()
-  local lines, hl = {}, {}
-  local function add(text, group) lines[#lines + 1] = text hl[#lines] = group end
   local s = S.sess
   local st = s and s.status or {}
-  add(" Status", "RailAccent")
-  add("  Project  " .. trunc(vim.fs.basename(root()), WIDTH - 14), "RailText")
-  add("  Branch   " .. trunc(S.git.branch ~= "" and S.git.branch or "-", WIDTH - 14), "RailBranch")
-  add("  Model    " .. (st.model or "-"), "RailText")
-  add("", "RailText")
-  add(" Changes", "RailAccent")
-  add(("  %d file%s · +%d -%d"):format(S.git.files, S.git.files == 1 and "" or "s", S.git.add, S.git.del), "RailText")
-  add("  <leader>ae to browse", "RailMuted")
+  local inner = WIDTH - 5
+  local tone, label = "RailMuted", "no session"
+  if s then
+    if s.state == "working" then tone, label = "RailWork", "working" .. (s.tool and (" · " .. s.tool) or "")
+    elseif s.state == "waiting" then tone, label = "RailWait", "waiting for you"
+    else tone, label = "RailOk", "idle" end
+  end
+
+  local status = {
+    kv("Project", trunc(vim.fs.basename(root()), inner - 8)),
+    kv("Branch", trunc(S.git.branch ~= "" and S.git.branch or "-", inner - 8), "RailBranch"),
+    kv("Model", st.model or "-"),
+  }
+  if st.ctx then
+    local c = st.ctx >= 80 and "RailWait" or (st.ctx >= 50 and "RailWork" or "RailOk")
+    status[#status + 1] = { { ("%-8s"):format("Context"), "RailMuted" }, { gauge(st.ctx, 8), c }, { (" %d%%"):format(st.ctx), "RailMuted" } }
+  end
+  if st.cost then status[#status + 1] = kv("Cost", ("$%.2f"):format(st.cost)) end
+  local rows = panel("Status", label, tone, status)
+
+  local g = S.git
+  local body = {}
+  for i, f in ipairs(g.list) do
+    if i > 6 then
+      body[#body + 1] = { { ("+%d more"):format(#g.list - 6), "RailMuted" } }
+      break
+    end
+    local grp = f.st:find("[DU]") and "RailWait" or (f.st:find("[?A]") and "RailOk" or "RailWork")
+    body[#body + 1] = { { ("%-2s "):format(f.st), grp }, { trunc(vim.fs.basename(f.path), inner - 4), "RailText" } }
+  end
+  if #body == 0 then body[1] = { { "clean", "RailMuted" } } else body[#body + 1] = { { "<leader>ae to browse", "RailMuted" } } end
+  local sub = #g.list == 0 and "" or ("%d file%s · +%d -%d"):format(#g.list, #g.list == 1 and "" or "s", g.add, g.del)
+  vim.list_extend(rows, panel("Changes", sub, "RailAccent", body))
+
   local todos = s and s.todos or {}
   if #todos > 0 then
-    local done = 0
-    for _, t in ipairs(todos) do if t.status == "completed" then done = done + 1 end end
-    add("", "RailText")
-    add((" Todos · %d of %d"):format(done, #todos), "RailAccent")
+    local done, tb = 0, {}
     for _, t in ipairs(todos) do
-      local icon, g = "○", "RailText"
-      if t.status == "completed" then icon, g = "✓", "RailMuted"
-      elseif t.status == "in_progress" then icon, g = "●", "RailWork" end
-      add("  " .. icon .. " " .. trunc(t.content or "", WIDTH - 6), g)
+      if t.status == "completed" then done = done + 1 end
+      local icon, grp = "○", "RailText"
+      if t.status == "completed" then icon, grp = "✓", "RailMuted"
+      elseif t.status == "in_progress" then icon, grp = "●", "RailWork" end
+      tb[#tb + 1] = { { icon .. " ", grp }, { trunc(t.content or "", inner - 2), grp } }
     end
+    vim.list_extend(rows, panel("Todos", ("%d of %d"):format(done, #todos), "RailAccent", tb))
   end
-  return lines, hl
+  return rows
 end
 
 local function rail_open() return S.win and vim.api.nvim_win_is_valid(S.win) end
 
+local NS = vim.api.nvim_create_namespace("claude_rail")
+
 local function draw_rail()
   if not rail_open() then return end
-  local lines, hl = card()
+  local rows = card()
+  local lines, spans = {}, {}
+  for i, row in ipairs(rows) do
+    local text, col = "", 0
+    for _, c in ipairs(row) do
+      spans[#spans + 1] = { i - 1, col, col + #c[1], c[2] }
+      text, col = text .. c[1], col + #c[1]
+    end
+    lines[i] = text
+  end
   vim.bo[S.buf].modifiable = true
   vim.api.nvim_buf_set_lines(S.buf, 0, -1, false, lines)
   vim.bo[S.buf].modifiable = false
-  vim.api.nvim_buf_clear_namespace(S.buf, -1, 0, -1)
-  for i, g in pairs(hl) do vim.api.nvim_buf_add_highlight(S.buf, -1, g, i - 1, 0, -1) end
-  -- Sit just left of the Claude window (or at the right edge when there is none).
+  vim.api.nvim_buf_clear_namespace(S.buf, NS, 0, -1)
+  for _, sp in ipairs(spans) do
+    vim.api.nvim_buf_set_extmark(S.buf, NS, sp[1], sp[2], { end_col = sp[3], hl_group = sp[4] })
+  end
+  -- Full-height column just left of the Claude window (or at the right edge when there is none).
   local cw = claude_wins()[1]
-  local col = cw and vim.api.nvim_win_get_position(cw)[2] - 1 or vim.o.columns - 1
-  vim.api.nvim_win_set_config(S.win, { relative = "editor", row = 1, col = math.max(col, WIDTH + 1), height = #lines, width = WIDTH })
+  local col = cw and vim.api.nvim_win_get_position(cw)[2] - WIDTH or vim.o.columns - WIDTH
+  vim.api.nvim_win_set_config(S.win, {
+    relative = "editor", row = 1, col = math.max(col, 0), width = WIDTH, height = math.max(vim.o.lines - vim.o.cmdheight - 3, 1),
+  })
 end
 
 function M.toggle_rail()
@@ -166,16 +251,17 @@ function M.toggle_rail()
     vim.bo[S.buf].bufhidden = "hide"
   end
   S.win = vim.api.nvim_open_win(S.buf, false, {
-    relative = "editor", anchor = "NE", row = 1, col = vim.o.columns - 1, width = WIDTH, height = 8,
-    style = "minimal", border = "rounded", focusable = false, zindex = 40, title = " ✻ Claude ", title_pos = "left",
+    relative = "editor", row = 1, col = vim.o.columns - WIDTH, width = WIDTH, height = 10,
+    style = "minimal", border = "none", focusable = false, zindex = 40,
   })
-  vim.wo[S.win].winhighlight = "NormalFloat:Normal,FloatBorder:RailMuted,FloatTitle:RailAccent"
+  vim.wo[S.win].winhighlight = "NormalFloat:RailPanel"
   draw_rail()
 end
 
 local function apply_winbar()
   for _, w in ipairs(claude_wins()) do
     vim.wo[w].winbar = "%!v:lua.require'config.claude_rail'.header()"
+    vim.wo[w].winhighlight = "WinBar:RailPanel,WinBarNC:RailPanel"
   end
 end
 
