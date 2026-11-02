@@ -8,6 +8,9 @@ local DIR = (vim.env.XDG_STATE_HOME or (vim.env.HOME .. "/.local/state")) .. "/c
 local WIDTH = 36
 local SPIN = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
+local FLOWER = { "✿", "❀", "❁", "❃" }
+local function tick() return math.floor((vim.uv or vim.loop).hrtime() / 1.5e8) end
+
 local S = { sess = nil, git = { branch = "", files = 0, add = 0, del = 0, list = {} }, win = nil, buf = nil, auto = true, flow = { branches = {}, prs = {} } }
 
 -- Colors come from the active colorscheme; every group carries the panel background so the
@@ -124,7 +127,7 @@ local function state_chunk()
   local s = S.sess
   if not s then return "%#RailMuted#○ no session" end
   if s.state == "working" then
-    local f = SPIN[math.floor(uv.hrtime() / 1e8) % #SPIN + 1]
+    local f = SPIN[tick() % #SPIN + 1]
     return "%#RailWork#" .. f .. " working" .. (s.tool and ("%#RailMuted# · " .. s.tool) or "")
   elseif s.state == "waiting" then
     return "%#RailWait# waiting for you"
@@ -135,7 +138,7 @@ end
 --- Winbar string for the Claude window (evaluated by %!v:lua).
 function M.header()
   local s = S.sess
-  local parts = { " %#RailAccent#✿ Claude ", state_chunk() }
+  local parts = { " %#RailAccent#" .. ((s and s.state == "working") and FLOWER[tick() % #FLOWER + 1] or "✿") .. " Claude ", state_chunk() }
   if S.git.branch ~= "" then
     parts[#parts + 1] = ("%%#RailMuted# │ %%#RailBranch# %s"):format((S.git.branch:gsub("%%", "%%%%")))
     if S.git.files > 0 then parts[#parts + 1] = "%#RailMuted# ±" .. S.git.files end
@@ -173,11 +176,11 @@ end
 -- A row is a list of { text, group } chunks; the rail buffer is built from them.
 local BAR = "▎"
 
-local function panel(title, subtitle, tone, body)
+local function panel(title, subtitle, tone, body, glyph)
   local rows = {}
   local bar = { BAR .. " ", tone }
   rows[#rows + 1] = { bar }
-  local head = { bar, { "✿ " .. title, "RailAccent" } }
+  local head = { bar, { (glyph or "✿") .. " " .. title, "RailAccent" } }
   if subtitle and subtitle ~= "" then
     head[#head + 1] = { " · ", "RailMuted" }
     head[#head + 1] = { subtitle, "RailMuted" }
@@ -204,7 +207,7 @@ local function card()
   local inner = WIDTH - 5
   local tone, label = "RailMuted", "no session"
   if s then
-    if s.state == "working" then tone, label = "RailWork", "working" .. (s.tool and (" · " .. s.tool) or "")
+    if s.state == "working" then tone, label = "RailWork", SPIN[tick() % #SPIN + 1] .. " working" .. (s.tool and (" · " .. s.tool) or "")
     elseif s.state == "waiting" then tone, label = "RailWait", "waiting for you"
     else tone, label = "RailOk", "idle" end
   end
@@ -219,7 +222,8 @@ local function card()
     status[#status + 1] = { { ("%-8s"):format("Context"), "RailMuted" }, { gauge(st.ctx, 8), c }, { (" %d%%"):format(st.ctx), "RailMuted" } }
   end
   if st.cost then status[#status + 1] = kv("Cost", ("$%.2f"):format(st.cost)) end
-  local rows = panel("Status", label, tone, status)
+  local working = s and s.state == "working"
+  local rows = panel("Status", label, tone, status, working and FLOWER[tick() % #FLOWER + 1] or nil)
 
   local g = S.git
   local body = {}
@@ -252,7 +256,7 @@ local function card()
   if #agents > 0 then
     local ab = {}
     for _, a in ipairs(agents) do
-      ab[#ab + 1] = { { "● ", "RailWork" }, { trunc(a.kind .. " · " .. (a.desc ~= "" and a.desc or "working"), inner - 2), "RailText" } }
+      ab[#ab + 1] = { { SPIN[(tick() + #ab) % #SPIN + 1] .. " ", "RailWork" }, { trunc(a.kind .. " · " .. (a.desc ~= "" and a.desc or "working"), inner - 2), "RailText" } }
     end
     vim.list_extend(rows, panel("Agents", ("%d running"):format(#agents), "RailWork", ab))
   end
@@ -394,7 +398,7 @@ function M.setup()
   -- Spinner: only repaint while Claude is working.
   local t = uv.new_timer()
   t:start(0, 120, vim.schedule_wrap(function()
-    if S.sess and S.sess.state == "working" then pcall(vim.cmd, "redrawstatus!") end
+    if S.sess and (S.sess.state == "working" or #(S.sess.agents or {}) > 0) then pcall(vim.cmd, "redrawstatus!") draw_rail() end
   end))
   vim.api.nvim_create_autocmd("VimLeavePre", { callback = function() pcall(w.stop, w) pcall(t.stop, t) end })
 
