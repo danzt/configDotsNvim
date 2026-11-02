@@ -235,27 +235,49 @@ local function draw_rail()
   for _, sp in ipairs(spans) do
     vim.api.nvim_buf_set_extmark(S.buf, NS, sp[1], sp[2], { end_col = sp[3], hl_group = sp[4] })
   end
-  -- Full-height column just left of the Claude window (or at the right edge when there is none).
-  local cw = claude_wins()[1]
-  local col = cw and vim.api.nvim_win_get_position(cw)[2] - WIDTH or vim.o.columns - WIDTH
-  vim.api.nvim_win_set_config(S.win, {
-    relative = "editor", row = 1, col = math.max(col, 0), width = WIDTH, height = math.max(vim.o.lines - vim.o.cmdheight - 3, 1),
-  })
 end
 
-function M.toggle_rail()
-  S.auto = false
-  if rail_open() then vim.api.nvim_win_close(S.win, true) S.win = nil return end
+local function zen_active()
+  local z = package.loaded.snacks and Snacks.zen and Snacks.zen.win
+  return z and z.valid and z:valid() or false
+end
+
+local function open_rail()
+  if rail_open() then return end
   if not (S.buf and vim.api.nvim_buf_is_valid(S.buf)) then
     S.buf = vim.api.nvim_create_buf(false, true)
     vim.bo[S.buf].bufhidden = "hide"
   end
-  S.win = vim.api.nvim_open_win(S.buf, false, {
-    relative = "editor", row = 1, col = vim.o.columns - WIDTH, width = WIDTH, height = 10,
-    style = "minimal", border = "none", focusable = false, zindex = 40,
-  })
-  vim.wo[S.win].winhighlight = "NormalFloat:RailPanel"
+  -- A real split (not a float): nvim reserves its width, so text wraps before reaching it and
+  -- other widgets can be stacked in this column later. It sits just left of the Claude window.
+  local cw = claude_wins()[1]
+  S.win = vim.api.nvim_open_win(S.buf, false, cw and { split = "left", win = cw, width = WIDTH } or { split = "right", win = -1, width = WIDTH })
+  for k, v in pairs({ number = false, relativenumber = false, signcolumn = "no", foldcolumn = "0", statuscolumn = "",
+    cursorline = false, list = false, wrap = false, winfixwidth = true, spell = false, winbar = "" }) do
+    vim.wo[S.win][k] = v
+  end
+  vim.wo[S.win].winhighlight = "Normal:RailPanel,NormalNC:RailPanel,EndOfBuffer:RailPanel"
   draw_rail()
+end
+
+local function close_rail()
+  if rail_open() then pcall(vim.api.nvim_win_close, S.win, true) end
+  S.win = nil
+end
+
+function M.toggle_rail()
+  S.auto = false
+  if rail_open() then close_rail() else open_rail() end
+end
+
+-- Zen mode takes the whole width: hide the rail while it is active, bring it back after.
+local function sync_zen()
+  if zen_active() then
+    if rail_open() then S.zen_hid = true close_rail() end
+  elseif S.zen_hid then
+    S.zen_hid = nil
+    open_rail()
+  end
 end
 
 local function apply_winbar()
@@ -269,7 +291,7 @@ local function refresh()
   load_session()
   load_git()
   apply_winbar()
-  if S.auto and S.sess and not rail_open() and vim.o.columns >= 180 then M.toggle_rail() S.auto = true end
+  if S.auto and (S.sess or #claude_wins() > 0) and not rail_open() and not zen_active() then open_rail() end
   draw_rail()
   pcall(vim.cmd, "redrawstatus!")
 end
@@ -278,8 +300,8 @@ function M.setup()
   vim.fn.mkdir(DIR, "p")
   highlights()
   vim.api.nvim_create_autocmd("ColorScheme", { callback = highlights })
-  vim.api.nvim_create_autocmd({ "TermOpen", "WinEnter", "BufWinEnter", "VimResized" }, {
-    callback = function() vim.schedule(function() apply_winbar() draw_rail() end) end,
+  vim.api.nvim_create_autocmd({ "TermOpen", "WinEnter", "WinNew", "WinClosed", "BufWinEnter", "VimResized" }, {
+    callback = function() vim.schedule(function() apply_winbar() if S.auto and (S.sess or #claude_wins() > 0) and not rail_open() and not zen_active() then open_rail() end draw_rail() sync_zen() end) end,
   })
 
   local w = uv.new_fs_event()
