@@ -1,0 +1,11 @@
+#!/bin/bash
+# JankyBorders — highlights the focused window. Read by `brew services start borders`.
+options=(
+  style=round
+  width=5.0
+  hidpi=on
+  active_color=0xff6fa0af
+  inactive_color=0x00000000
+)
+
+borders "${options[@]}"
