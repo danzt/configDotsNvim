@@ -4,15 +4,44 @@
 -- Default keymaps that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/keymaps.lua
 -- Add any additional keymaps here
 
--- Position cursor at the middle of the screen after scrolling half page
-vim.keymap.set("n", "<C-d>", "<C-d>zz") -- Scroll down half a page and center the cursor
-vim.keymap.set("n", "<C-u>", "<C-u>zz") -- Scroll up half a page and center the cursor
-
 -- Map Ctrl+b in insert mode to delete to the end of the word without leaving insert mode
 vim.keymap.set("i", "<C-b>", "<C-o>de")
 
 -- Map Ctrl+c to escape from other modes
 vim.keymap.set({ "i", "n", "v" }, "<C-c>", [[<C-\><C-n>]])
+
+-- Screen Keys
+vim.keymap.set({ "n" }, "<leader>uk", "<cmd>Screenkey<CR>")
+
+----- WEB PREVIEW -----
+-- Opens your dev server in a dedicated Chrome instance (its own --user-data-dir,
+-- --app mode = no tabs/address bar). Separate profile = your real Chrome
+-- sessions/tabs are never touched. Vite/Next/CRA already hot-reload the page
+-- themselves, so this only needs to open/point a window at the right URL.
+local preview_profile_dir = vim.fn.stdpath("cache") .. "/web-preview-chrome"
+local preview_last_url = "http://localhost:5173"
+
+local function open_web_preview(url)
+  url = (url and url ~= "") and url or preview_last_url
+  preview_last_url = url
+  vim.fn.jobstart({
+    "open", "-na", "Google Chrome", "--args",
+    "--app=" .. url,
+    "--user-data-dir=" .. preview_profile_dir,
+    "--window-size=1280,900",
+  }, { detach = true })
+  vim.notify("Preview: " .. url)
+end
+
+vim.api.nvim_create_user_command("WebPreview", function(opts)
+  open_web_preview(opts.args)
+end, { nargs = "?", desc = "Open dev server preview in a dedicated Chrome window" })
+
+vim.keymap.set("n", "<leader>up", function() open_web_preview() end, { desc = "Open web preview" })
+vim.keymap.set("n", "<leader>uP", function()
+  vim.fn.jobstart({ "pkill", "-f", "user-data-dir=" .. preview_profile_dir }, {})
+  vim.notify("Preview cerrado")
+end, { desc = "Close web preview" })
 
 ----- Tmux Navigation ------
 local nvim_tmux_nav = require("nvim-tmux-navigation")
@@ -25,19 +54,14 @@ vim.keymap.set("n", "<C-\\>", nvim_tmux_nav.NvimTmuxNavigateLastActive) -- Navig
 vim.keymap.set("n", "<C-Space>", nvim_tmux_nav.NvimTmuxNavigateNext) -- Navigate to the next pane
 
 ----- OBSIDIAN -----
-vim.keymap.set(
-  "n",
-  "<leader>oc",
-  "<cmd>lua require('obsidian').util.toggle_checkbox()<CR>",
-  { desc = "Obsidian Check Checkbox" }
-)
-vim.keymap.set("n", "<leader>ot", "<cmd>ObsidianTemplate<CR>", { desc = "Insert Obsidian Template" })
-vim.keymap.set("n", "<leader>oo", "<cmd>ObsidianOpen<CR>", { desc = "Open in Obsidian App" })
-vim.keymap.set("n", "<leader>ob", "<cmd>ObsidianBacklinks<CR>", { desc = "Show ObsidianBacklinks" })
-vim.keymap.set("n", "<leader>ol", "<cmd>ObsidianLinks<CR>", { desc = "Show ObsidianLinks" })
-vim.keymap.set("n", "<leader>on", "<cmd>ObsidianNew<CR>", { desc = "Create New Note" })
-vim.keymap.set("n", "<leader>os", "<cmd>ObsidianSearch<CR>", { desc = "Search Obsidian" })
-vim.keymap.set("n", "<leader>oq", "<cmd>ObsidianQuickSwitch<CR>", { desc = "Quick Switch" })
+vim.keymap.set("n", "<leader>oc", "<cmd>Obsidian check<CR>", { desc = "Obsidian Check Checkbox" })
+vim.keymap.set("n", "<leader>ot", "<cmd>Obsidian template<CR>", { desc = "Insert Obsidian Template" })
+vim.keymap.set("n", "<leader>oo", "<cmd>Obsidian open<CR>", { desc = "Open in Obsidian App" })
+vim.keymap.set("n", "<leader>ob", "<cmd>Obsidian backlinks<CR>", { desc = "Show Obsidian Backlinks" })
+vim.keymap.set("n", "<leader>ol", "<cmd>Obsidian links<CR>", { desc = "Show Obsidian Links" })
+vim.keymap.set("n", "<leader>on", "<cmd>Obsidian new<CR>", { desc = "Create New Note" })
+vim.keymap.set("n", "<leader>os", "<cmd>Obsidian search<CR>", { desc = "Search Obsidian" })
+vim.keymap.set("n", "<leader>oq", "<cmd>Obsidian quick-switch<CR>", { desc = "Quick Switch" })
 
 ----- OIL -----
 vim.keymap.set("n", "-", "<CMD>Oil<CR>", { desc = "Open parent directory" })
@@ -67,6 +91,87 @@ vim.api.nvim_set_keymap("x", "K", "<Nop>", { noremap = true, silent = true })
 -- Redefine Ctrl+s to save with the custom function
 vim.api.nvim_set_keymap("n", "<C-s>", ":lua SaveFile()<CR>", { noremap = true, silent = true })
 
+-- Grep keybinding for visual mode - search selected text
+vim.keymap.set("v", "<leader>sg", function()
+  -- Get the selected text
+  local start_pos = vim.fn.getpos("'<")
+  local end_pos = vim.fn.getpos("'>")
+  local lines = vim.fn.getline(start_pos[2], end_pos[2])
+
+  if #lines == 0 then
+    return
+  end
+
+  -- Handle single line selection
+  if #lines == 1 then
+    lines[1] = string.sub(lines[1], start_pos[3], end_pos[3])
+  else
+    -- Handle multi-line selection
+    lines[1] = string.sub(lines[1], start_pos[3])
+    lines[#lines] = string.sub(lines[#lines], 1, end_pos[3])
+  end
+
+  local selected_text = table.concat(lines, "\n")
+
+  -- Escape special characters for grep
+  selected_text = vim.fn.escape(selected_text, "\\.*[]^$()+?{}")
+
+  -- Use the selected text for grep
+  if pcall(require, "snacks") then
+    require("snacks").picker.grep({ search = selected_text })
+  elseif pcall(require, "fzf-lua") then
+    require("fzf-lua").live_grep({ search = selected_text })
+  else
+    vim.notify("No grep picker available", vim.log.levels.ERROR)
+  end
+end, { desc = "Grep Selected Text" })
+
+-- Grep keybinding for visual mode with G - search selected text at root level
+vim.keymap.set("v", "<leader>sG", function()
+  -- Get git root or fallback to cwd
+  local git_root = vim.fn.system("git rev-parse --show-toplevel 2>/dev/null"):gsub("\n", "")
+  local root = vim.v.shell_error == 0 and git_root ~= "" and git_root or vim.fn.getcwd()
+
+  -- Get the selected text
+  local start_pos = vim.fn.getpos("'<")
+  local end_pos = vim.fn.getpos("'>")
+  local lines = vim.fn.getline(start_pos[2], end_pos[2])
+
+  if #lines == 0 then
+    return
+  end
+
+  -- Handle single line selection
+  if #lines == 1 then
+    lines[1] = string.sub(lines[1], start_pos[3], end_pos[3])
+  else
+    -- Handle multi-line selection
+    lines[1] = string.sub(lines[1], start_pos[3])
+    lines[#lines] = string.sub(lines[#lines], 1, end_pos[3])
+  end
+
+  local selected_text = table.concat(lines, "\n")
+
+  -- Escape special characters for grep
+  selected_text = vim.fn.escape(selected_text, "\\.*[]^$()+?{}")
+
+  -- Use the selected text for grep at root level
+  if pcall(require, "snacks") then
+    require("snacks").picker.grep({ search = selected_text, cwd = root })
+  elseif pcall(require, "fzf-lua") then
+    require("fzf-lua").live_grep({ search = selected_text, cwd = root })
+  else
+    vim.notify("No grep picker available", vim.log.levels.ERROR)
+  end
+end, { desc = "Grep Selected Text (Root Dir)" })
+
+-- Delete all marks
+vim.keymap.set("n", "<leader>md", function()
+  vim.cmd("delmarks!")
+  vim.cmd("delmarks A-Z0-9")
+  vim.notify("All marks deleted")
+end, { desc = "Delete all marks" })
+
 -- Custom save function
 function SaveFile()
   -- Check if a buffer with a file is open
@@ -86,3 +191,12 @@ function SaveFile()
     vim.notify("Error: " .. err, vim.log.levels.ERROR) -- Show the error message if it fails
   end
 end
+
+-- YT Music panel (ytrail): floating window on small screens, side panel on a big monitor.
+-- Decided from the current nvim size each time. q closes the panel and the music keeps playing.
+vim.keymap.set("n", "<leader>yt", function()
+  local big = vim.o.columns >= 200 and vim.o.lines >= 50
+  Snacks.terminal("ytrail", {
+    win = big and { position = "right", width = 0.3 } or { position = "float", width = 0.85, height = 0.85, border = "rounded" },
+  })
+end, { desc = "YT Music panel" })
