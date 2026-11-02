@@ -246,7 +246,7 @@ local function open_rail()
   if rail_open() then return end
   if not (S.buf and vim.api.nvim_buf_is_valid(S.buf)) then
     S.buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[S.buf].bufhidden = "hide"
+    vim.bo[S.buf].bufhidden, vim.bo[S.buf].buftype, vim.bo[S.buf].filetype = "hide", "nofile", "claude-rail"
   end
   -- A real split (not a float): nvim reserves its width, so text wraps before reaching it and
   -- other widgets can be stacked in this column later. It sits just left of the Claude window.
