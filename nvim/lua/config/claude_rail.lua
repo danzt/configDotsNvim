@@ -380,7 +380,7 @@ local function refresh()
   load_session()
   load_git()
   apply_winbar()
-  if S.auto and (S.sess or #claude_wins() > 0) and not rail_open() and not zen_active() then open_rail() end
+  if S.auto and (S.sess or #claude_wins() > 0 or vim.fs.root(uv.cwd(), ".git") ~= nil) and not rail_open() and not zen_active() then open_rail() end
   draw_rail()
   pcall(vim.cmd, "redrawstatus!")
 end
@@ -390,7 +390,7 @@ function M.setup()
   highlights()
   vim.api.nvim_create_autocmd("ColorScheme", { callback = highlights })
   vim.api.nvim_create_autocmd({ "TermOpen", "WinEnter", "WinNew", "WinClosed", "BufWinEnter", "VimResized" }, {
-    callback = function() vim.schedule(function() apply_winbar() if S.auto and (S.sess or #claude_wins() > 0) and not rail_open() and not zen_active() then open_rail() end draw_rail() sync_zen() end) end,
+    callback = function() vim.schedule(function() apply_winbar() if S.auto and (S.sess or #claude_wins() > 0 or vim.fs.root(uv.cwd(), ".git") ~= nil) and not rail_open() and not zen_active() then open_rail() end draw_rail() sync_zen() end) end,
   })
 
   local w = uv.new_fs_event()
