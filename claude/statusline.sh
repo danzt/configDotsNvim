@@ -158,7 +158,7 @@ SID=$(echo "$input" | jq -r '.session_id // empty')
 if [ -n "$SID" ]; then
   RAIL_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/claude-state"
   mkdir -p "$RAIL_DIR"
-  echo "$input" | jq -c --argjson ctx "$CTX_PERCENT" '{model: .model.display_name, ctx: $ctx, cost: (.cost.total_cost_usd // 0), added: (.cost.total_lines_added // 0), removed: (.cost.total_lines_removed // 0)}' > "$RAIL_DIR/$SID.status.json.tmp" && mv "$RAIL_DIR/$SID.status.json.tmp" "$RAIL_DIR/$SID.status.json"
+  echo "$input" | jq -c --argjson ctx "$CTX_PERCENT" '{model: .model.display_name, ctx: $ctx, cost: (.cost.total_cost_usd // 0), added: (.cost.total_lines_added // 0), removed: (.cost.total_lines_removed // 0), r5: (.rate_limits.five_hour.used_percentage // null), r7: (.rate_limits.seven_day.used_percentage // null)}' > "$RAIL_DIR/$SID.status.json.tmp" && mv "$RAIL_DIR/$SID.status.json.tmp" "$RAIL_DIR/$SID.status.json"
 fi
 
 # Build status line

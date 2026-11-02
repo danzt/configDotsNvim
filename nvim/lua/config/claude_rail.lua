@@ -8,7 +8,7 @@ local DIR = (vim.env.XDG_STATE_HOME or (vim.env.HOME .. "/.local/state")) .. "/c
 local WIDTH = 36
 local SPIN = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
-local S = { sess = nil, git = { branch = "", files = 0, add = 0, del = 0, list = {} }, win = nil, buf = nil, auto = true }
+local S = { sess = nil, git = { branch = "", files = 0, add = 0, del = 0, list = {} }, win = nil, buf = nil, auto = true, flow = { branches = {}, prs = {} } }
 
 -- Colors come from the active colorscheme; every group carries the panel background so the
 -- header and rail read as solid blocks (Gentle Shell "float" style).
@@ -83,6 +83,38 @@ local function load_git()
   end)
 end
 
+--- Branch flow (local branches with ahead/behind) and open PRs (gh, optional), refreshed on a slow timer.
+local function load_flow()
+  local r = root()
+  vim.system({ "git", "-C", r, "for-each-ref", "--sort=-committerdate", "--count=5",
+    "--format=%(HEAD)|%(refname:short)|%(upstream:track)", "refs/heads" }, { text = true }, function(o)
+    local list = {}
+    for line in (o.stdout or ""):gmatch("[^\n]+") do
+      local head, name, track = line:match("^(.)|(.-)|(.*)$")
+      if name then
+        local a, b = track:match("ahead (%d+)"), track:match("behind (%d+)")
+        list[#list + 1] = { cur = head == "*", name = name, ahead = tonumber(a) or 0, behind = tonumber(b) or 0 }
+      end
+    end
+    vim.schedule(function() S.flow.branches = list end)
+  end)
+  if vim.fn.executable("gh") == 0 then return end
+  vim.system({ "gh", "pr", "list", "--state", "open", "--limit", "5", "--json",
+    "number,title,headRefName,isDraft,statusCheckRollup" }, { text = true, cwd = r }, function(o)
+    local ok, d = pcall(vim.json.decode, o.stdout or "")
+    if not (ok and type(d) == "table") then return end
+    for _, pr in ipairs(d) do
+      local ci = "ok"
+      for _, c in ipairs(pr.statusCheckRollup or {}) do
+        if c.conclusion == "FAILURE" or c.conclusion == "TIMED_OUT" or c.state == "FAILURE" then ci = "fail" break end
+        if (c.status and c.status ~= "COMPLETED") or c.state == "PENDING" then ci = "wait" end
+      end
+      pr.ci = (pr.statusCheckRollup and #pr.statusCheckRollup > 0) and ci or "none"
+    end
+    vim.schedule(function() S.flow.prs = d end)
+  end)
+end
+
 local function gauge(pct, cells)
   local filled = math.floor(pct * cells / 100 + 0.5)
   return ("▰"):rep(filled) .. ("▱"):rep(cells - filled)
@@ -114,6 +146,12 @@ function M.header()
   if st.ctx then
     local c = st.ctx >= 80 and "RailWait" or (st.ctx >= 50 and "RailWork" or "RailOk")
     parts[#parts + 1] = ("%%#RailMuted#ctx %%#%s#%s %%#RailMuted#%d%%%% "):format(c, gauge(st.ctx, 8), st.ctx)
+  end
+  for _, u in ipairs({ { "5h", st.r5 }, { "7d", st.r7 } }) do
+    if u[2] then
+      local c = u[2] >= 95 and "RailWait" or (u[2] >= 80 and "RailWork" or "RailOk")
+      parts[#parts + 1] = ("%%#RailMuted#%s %%#%s#%s %%#RailMuted#%d%%%% "):format(u[1], c, gauge(u[2], 5), u[2])
+    end
   end
   if st.cost then parts[#parts + 1] = ("%%#RailMuted#│ %%#RailText#$%.2f "):format(st.cost) end
   return table.concat(parts)
@@ -209,6 +247,53 @@ local function card()
     end
     vim.list_extend(rows, panel("Todos", ("%d of %d"):format(done, #todos), "RailAccent", tb))
   end
+
+  local agents = s and s.agents or {}
+  if #agents > 0 then
+    local ab = {}
+    for _, a in ipairs(agents) do
+      ab[#ab + 1] = { { "● ", "RailWork" }, { trunc(a.kind .. " · " .. (a.desc ~= "" and a.desc or "working"), inner - 2), "RailText" } }
+    end
+    vim.list_extend(rows, panel("Agents", ("%d running"):format(#agents), "RailWork", ab))
+  end
+
+  local jobs = s and s.jobs or {}
+  if #jobs > 0 then
+    local jb = {}
+    for _, j in ipairs(jobs) do
+      jb[#jb + 1] = { { "▸ ", "RailWork" }, { trunc(j.cmd, inner - 2), "RailText" } }
+    end
+    vim.list_extend(rows, panel("Jobs", ("%d background"):format(#jobs), "RailAccent", jb))
+  end
+
+  local fl = S.flow
+  if #fl.branches > 0 or #fl.prs > 0 then
+    local gb = {}
+    for _, b in ipairs(fl.branches) do
+      local sync = (b.ahead > 0 and (" ↑" .. b.ahead) or "") .. (b.behind > 0 and (" ↓" .. b.behind) or "")
+      gb[#gb + 1] = { { b.cur and " " or "  ", "RailBranch" }, { trunc(b.name, inner - 6), b.cur and "RailText" or "RailMuted" }, { sync, "RailWork" } }
+    end
+    for _, pr in ipairs(fl.prs) do
+      local icon, grp = "●", "RailMuted"
+      if pr.ci == "ok" then icon, grp = "✓", "RailOk" elseif pr.ci == "fail" then icon, grp = "✗", "RailWait" elseif pr.ci == "wait" then icon, grp = "…", "RailWork" end
+      gb[#gb + 1] = { { icon .. " ", grp }, { ("#%d "):format(pr.number), "RailAccent" }, { trunc(pr.title, inner - 8), pr.isDraft and "RailMuted" or "RailText" } }
+    end
+    vim.list_extend(rows, panel("Git", #fl.prs > 0 and ("%d PR%s"):format(#fl.prs, #fl.prs == 1 and "" or "s") or "branches", "RailBranch", gb))
+  end
+
+  local m = S.music
+  local playing = m and m.running and m.playing
+  local mbody
+  if m and m.running then
+    mbody = {
+      { { "♪ ", playing and "RailOk" or "RailMuted" }, { trunc(m.name or "?", inner - 2), "RailText" } },
+      { { trunc(m.genre or "", inner), "RailMuted" } },
+      { { "<leader>ym open · yp pause", "RailMuted" } },
+    }
+  else
+    mbody = { { { "nothing is playing", "RailMuted" } }, { { "<leader>ym to start", "RailMuted" } } }
+  end
+  vim.list_extend(rows, panel("Music", m and m.running and (playing and "playing" or "paused") or "", playing and "RailOk" or "RailMuted", mbody))
   return rows
 end
 
@@ -312,6 +397,53 @@ function M.setup()
     if S.sess and S.sess.state == "working" then pcall(vim.cmd, "redrawstatus!") end
   end))
   vim.api.nvim_create_autocmd("VimLeavePre", { callback = function() pcall(w.stop, w) pcall(t.stop, t) end })
+
+  -- gentle-stream (Gentle Shell's music player) state, polled in the background.
+  local function poll_music()
+    if vim.fn.executable("gentle-stream") == 0 then return end
+    vim.system({ "gentle-stream", "ctl", "status" }, { text = true }, function(o)
+      local ok, d = pcall(vim.json.decode, o.stdout or "")
+      vim.schedule(function()
+        local before = vim.inspect(S.music)
+        S.music = ok and d or nil
+        if vim.inspect(S.music) ~= before then draw_rail() end
+      end)
+    end)
+  end
+  local mt = uv.new_timer()
+  mt:start(0, 4000, vim.schedule_wrap(poll_music))
+  vim.api.nvim_create_autocmd("VimLeavePre", { callback = function() pcall(mt.stop, mt) end })
+
+  local ft = uv.new_timer()
+  ft:start(0, 45000, vim.schedule_wrap(function() load_flow() end))
+  vim.api.nvim_create_autocmd("VimLeavePre", { callback = function() pcall(ft.stop, ft) end })
+
+  local function keys(k) vim.api.nvim_feedkeys(vim.keycode(k), "m", false) end
+  -- Command palette: every Claude/rail action in one picker.
+  vim.keymap.set("n", "<leader>ak", function()
+    local items = {
+      { "New Claude session", "ClaudeCode" }, { "Continue last session", "ClaudeCode --continue" },
+      { "Resume session…", "ClaudeCode --resume" }, { "Focus Claude", "ClaudeCodeFocus" },
+      { "Select model", "ClaudeCodeSelectModel" }, { "Add current buffer", "ClaudeCodeAdd %" },
+      { "Accept diff", "ClaudeCodeDiffAccept" }, { "Deny diff", "ClaudeCodeDiffDeny" },
+      { "Toggle rail", function() M.toggle_rail() end }, { "Claude edited files", "ClaudeEdits" },
+      { "Toggle auto-open of edited files", function() keys("<leader>aF") end },
+      { "Music player", function() keys("<leader>ym") end }, { "Music: next", function() keys("<leader>yn") end },
+      { "Refresh git/PRs", function() load_flow() end },
+    }
+    vim.ui.select(items, { prompt = "Claude", format_item = function(i) return i[1] end }, function(c)
+      if not c then return end
+      if type(c[2]) == "function" then c[2]() else vim.cmd(c[2]) end
+    end)
+  end, { desc = "Claude command palette" })
+
+  local function ctl(cmd) vim.system({ "gentle-stream", "ctl", cmd }, {}, function() vim.schedule(poll_music) end) end
+  vim.keymap.set("n", "<leader>ym", function()
+    Snacks.terminal({ "gentle-stream" }, { win = { position = "float", width = 0.9, height = 0.9, border = "rounded" } })
+  end, { desc = "Music player (gentle-stream; b = back, keeps playing)" })
+  vim.keymap.set("n", "<leader>yn", function() ctl("next") end, { desc = "Music: next" })
+  vim.keymap.set("n", "<leader>yp", function() ctl(S.music and S.music.playing and "pause" or "play") end, { desc = "Music: play/pause" })
+  vim.keymap.set("n", "<leader>yx", function() ctl("stop") end, { desc = "Music: stop" })
 
   vim.keymap.set("n", "<leader>aR", M.toggle_rail, { desc = "Claude rail (status/changes/todos)" })
   refresh()

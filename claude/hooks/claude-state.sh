@@ -16,12 +16,20 @@ prev='{}'
 
 jq -c --arg ev "$1" --argjson prev "$prev" --argjson now "$(date +%s)" '
   . as $in
-  | ($prev * {session: $in.session_id, cwd: $in.cwd, ts: $now}) as $s
+  | ($in.tool_name // "") as $tn
+  | ($in.tool_use_id // "") as $tid
+  | ($prev * {session: $in.session_id, cwd: $in.cwd, ts: $now}) as $s0
+  | ($s0 | .agents = [(.agents // [])[] | select($now - .ts < 1800)] | .jobs = [(.jobs // [])[] | select($now - .ts < 7200)]) as $s
   | if   $ev == "working" then $s * {state: "working", tool: null}
-    elif $ev == "tool"    then $s * {state: "working", tool: $in.tool_name}
+    elif $ev == "tool"    then ($s * {state: "working", tool: $tn})
+                               | if ($tn == "Task" or $tn == "Agent") then .agents += [{id: $tid, desc: ($in.tool_input.description // ""), kind: ($in.tool_input.subagent_type // "agent"), ts: $now}]
+                                 elif ($tn == "Bash" and ($in.tool_input.run_in_background // false)) then .jobs += [{id: $tid, cmd: (($in.tool_input.command // "") | .[0:60]), ts: $now}]
+                                 else . end
     elif $ev == "post"    then ($s * {tool: null})
-                               | if $in.tool_name == "TodoWrite" then .todos = ($in.tool_input.todos // []) else . end
+                               | if $tn == "TodoWrite" then .todos = ($in.tool_input.todos // [])
+                                 elif ($tn == "Task" or $tn == "Agent") then .agents |= map(select(.id != $tid))
+                                 else . end
     elif $ev == "waiting" then $s * {state: "waiting"}
     elif $ev == "idle"    then $s * {state: "idle", tool: null}
     else $s end
-' <<<"$input" >"$f.tmp" && mv "$f.tmp" "$f"
+' <<<"$input" >"$f.$$.tmp" && mv "$f.$$.tmp" "$f"
