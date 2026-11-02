@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec node "$HOME/.local/share/ytrail/ytrail.mjs" "$@"
