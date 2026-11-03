@@ -47,7 +47,7 @@ end
 local function readjson(path)
   local f = io.open(path, "r")
   if not f then return nil end
-  local ok, d = pcall(vim.json.decode, f:read("*a"))
+  local ok, d = pcall(vim.json.decode, f:read("*a"), { luanil = { object = true, array = true } })
   f:close()
   return ok and d or nil
 end
@@ -104,7 +104,7 @@ local function load_flow()
   if vim.fn.executable("gh") == 0 then return end
   vim.system({ "gh", "pr", "list", "--state", "open", "--limit", "5", "--json",
     "number,title,headRefName,isDraft,statusCheckRollup" }, { text = true, cwd = r }, function(o)
-    local ok, d = pcall(vim.json.decode, o.stdout or "")
+    local ok, d = pcall(vim.json.decode, o.stdout or "", { luanil = { object = true, array = true } })
     if not (ok and type(d) == "table") then return end
     for _, pr in ipairs(d) do
       local ci = "ok"
@@ -389,6 +389,18 @@ function M.setup()
   vim.fn.mkdir(DIR, "p")
   highlights()
   vim.api.nvim_create_autocmd("ColorScheme", { callback = highlights })
+  -- The rail is display-only: the cursor never rests in it.
+  vim.api.nvim_create_autocmd("WinEnter", {
+    callback = function()
+      if rail_open() and vim.api.nvim_get_current_win() == S.win then
+        vim.schedule(function()
+          if rail_open() and vim.api.nvim_get_current_win() == S.win then
+            if not pcall(vim.cmd, "wincmd p") or vim.api.nvim_get_current_win() == S.win then pcall(vim.cmd, "wincmd h") end
+          end
+        end)
+      end
+    end,
+  })
   vim.api.nvim_create_autocmd({ "TermOpen", "WinEnter", "WinNew", "WinClosed", "BufWinEnter", "VimResized" }, {
     callback = function() vim.schedule(function() apply_winbar() if S.auto and (S.sess or #claude_wins() > 0 or vim.fs.root(uv.cwd(), ".git") ~= nil) and not rail_open() and not zen_active() then open_rail() end draw_rail() sync_zen() end) end,
   })
@@ -398,7 +410,7 @@ function M.setup()
   -- Spinner: only repaint while Claude is working.
   local t = uv.new_timer()
   t:start(0, 120, vim.schedule_wrap(function()
-    if S.sess and (S.sess.state == "working" or #(S.sess.agents or {}) > 0) then pcall(vim.cmd, "redrawstatus!") draw_rail() end
+    if S.sess and (S.sess.state == "working" or #(S.sess.agents or {}) > 0) then pcall(vim.cmd, "redrawstatus!") pcall(draw_rail) end
   end))
   vim.api.nvim_create_autocmd("VimLeavePre", { callback = function() pcall(w.stop, w) pcall(t.stop, t) end })
 
@@ -406,7 +418,7 @@ function M.setup()
   local function poll_music()
     if vim.fn.executable("gentle-stream") == 0 then return end
     vim.system({ "gentle-stream", "ctl", "status" }, { text = true }, function(o)
-      local ok, d = pcall(vim.json.decode, o.stdout or "")
+      local ok, d = pcall(vim.json.decode, o.stdout or "", { luanil = { object = true, array = true } })
       vim.schedule(function()
         local before = vim.inspect(S.music)
         S.music = ok and d or nil
