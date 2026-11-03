@@ -395,7 +395,12 @@ function M.setup()
       if rail_open() and vim.api.nvim_get_current_win() == S.win then
         vim.schedule(function()
           if rail_open() and vim.api.nvim_get_current_win() == S.win then
-            if not pcall(vim.cmd, "wincmd p") or vim.api.nvim_get_current_win() == S.win then pcall(vim.cmd, "wincmd h") end
+            -- Keep going the way the cursor was travelling: from the right (Claude) hop left, else hop right.
+            local prev = vim.fn.win_getid(vim.fn.winnr("#"))
+            local from_right = prev ~= 0 and prev ~= S.win and vim.api.nvim_win_get_position(prev)[2] > vim.api.nvim_win_get_position(S.win)[2]
+            pcall(vim.cmd, from_right and "wincmd h" or "wincmd l")
+            if vim.api.nvim_get_current_win() == S.win then pcall(vim.cmd, from_right and "wincmd l" or "wincmd h") end
+            if vim.api.nvim_get_current_win() == S.win then pcall(vim.cmd, "wincmd p") end
           end
         end)
       end
