@@ -4,7 +4,7 @@
       "complex_modifications": {
         "rules": [
           {
-            "description": "Caps Lock: hold = Cmd+Ctrl+Alt (AeroSpace Mod), tap = Escape",
+            "description": "Caps Lock: hold = Cmd+Ctrl+Alt (AeroSpace Mod)",
             "manipulators": [
               {
                 "from": {
@@ -22,11 +22,6 @@
                       "left_control",
                       "left_option"
                     ]
-                  }
-                ],
-                "to_if_alone": [
-                  {
-                    "key_code": "escape"
                   }
                 ],
                 "type": "basic"
