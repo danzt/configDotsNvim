@@ -3,7 +3,9 @@
 #   this pane      -> claude
 #   pane on right  -> standalone rail (claude/rail.mjs)
 #   tab "edits"    -> nvim with the tree of edited files (claude/edits-nvim); connect it from Claude with /ide
-# Extra arguments go to claude (e.g. `dev --continue`). CLAUDE_BIN overrides the command.
+# Resumes the latest conversation of this folder when there is one (a new one otherwise). Any argument
+# replaces that default and goes straight to claude (e.g. `dev --resume`, or `dev --model opus` for a fresh one).
+# CLAUDE_BIN overrides the command.
 here=$(cd "$(dirname "$0")" && pwd)
 pid() { jq -r '.result.pane.pane_id // .result.root_pane.pane_id // .result.pane_id // empty'; }
 
@@ -18,6 +20,11 @@ rail=$(herdr pane split "$cur" --direction right --ratio 0.75 --cwd "$PWD" --no-
 if ! herdr tab list | jq -e --arg ws "$ws" '.result.tabs[] | select(.workspace_id == $ws and .label == "edits")' >/dev/null; then
   edits=$(herdr tab create --workspace "$ws" --cwd "$PWD" --label edits --no-focus | pid)
   [ -n "$edits" ] && herdr pane run "$edits" "$here/edits-nvim" >/dev/null
+fi
+
+if [ $# -eq 0 ]; then
+  proj="$HOME/.claude/projects/$(printf %s "$PWD" | sd '[^A-Za-z0-9]' '-')"
+  fd -q -e jsonl -d 1 . "$proj" 2>/dev/null && set -- --continue
 fi
 
 exec ${CLAUDE_BIN:-claude --chrome} "$@"
