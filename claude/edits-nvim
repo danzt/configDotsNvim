@@ -1,0 +1,3 @@
+#!/bin/sh
+# nvim as the dedicated "edits" tab next to Claude: tree of edited files on the left, files open as Claude edits them.
+CLAUDE_EDITS_TAB=1 exec nvim "$@"

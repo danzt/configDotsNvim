@@ -1,0 +1,23 @@
+#!/bin/sh
+# Claude as the main screen, run inside a herdr pane in the project directory:
+#   this pane      -> claude
+#   pane on right  -> standalone rail (claude/rail.mjs)
+#   tab "edits"    -> nvim with the tree of edited files (claude/edits-nvim); connect it from Claude with /ide
+# Extra arguments go to claude (e.g. `dev --continue`). CLAUDE_BIN overrides the command.
+here=$(cd "$(dirname "$0")" && pwd)
+pid() { jq -r '.result.pane.pane_id // .result.root_pane.pane_id // .result.pane_id // empty'; }
+
+cur=$(herdr pane current | pid)
+[ -n "$cur" ] || { echo "dev: run it inside a herdr pane" >&2; exit 1; }
+ws=${cur%%:*}
+
+# 0.75 keeps the share for this pane (claude); the new pane gets the rest.
+rail=$(herdr pane split "$cur" --direction right --ratio 0.75 --cwd "$PWD" --no-focus | pid)
+[ -n "$rail" ] && herdr pane run "$rail" "$here/rail.mjs" >/dev/null
+
+if ! herdr tab list | jq -e --arg ws "$ws" '.result.tabs[] | select(.workspace_id == $ws and .label == "edits")' >/dev/null; then
+  edits=$(herdr tab create --workspace "$ws" --cwd "$PWD" --label edits --no-focus | pid)
+  [ -n "$edits" ] && herdr pane run "$edits" "$here/edits-nvim" >/dev/null
+fi
+
+exec ${CLAUDE_BIN:-claude --chrome} "$@"
