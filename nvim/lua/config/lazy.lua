@@ -1,19 +1,28 @@
 -- This file contains the configuration for setting up the lazy.nvim plugin manager in Neovim.
 
+-- Node.js configuration - always use latest stable version
+vim.g.node_host_prog = vim.fn.exepath("node") or "/usr/local/bin/node"
+
+-- Spell-checking
+vim.opt.spell = true -- activa spell checker
+vim.opt.spelllang = { "en" }
+
 -- Define the path to the lazy.nvim plugin
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 
 -- Check if the lazy.nvim plugin is not already installed
 if not vim.loop.fs_stat(lazypath) then
-  -- Bootstrap lazy.nvim by cloning the repository
-  -- stylua: ignore
-  vim.fn.system({ "git", "clone", "--filter=blob:none", "https://github.com/folke/lazy.nvim.git", "--branch=stable", lazypath })
+    -- Bootstrap lazy.nvim by cloning the repository
+    -- stylua: ignore
+    vim.fn.system({ "git", "clone", "--filter=blob:none", "https://github.com/folke/lazy.nvim.git", "--branch=stable",
+        lazypath })
 end
 
 -- Prepend the lazy.nvim path to the runtime path
 vim.opt.rtp:prepend(vim.env.LAZY or lazypath)
 
 -- Fix copy and paste in WSL (Windows Subsystem for Linux)
+vim.opt.clipboard = "unnamedplus" -- Use the system clipboard for all operations
 if vim.fn.has("wsl") == 1 then
   vim.g.clipboard = {
     name = "win32yank", -- Use win32yank for clipboard operations
@@ -35,19 +44,42 @@ require("lazy").setup({
     -- Add LazyVim and import its plugins
     { "LazyVim/LazyVim", import = "lazyvim.plugins" },
     -- Import any extra modules here
-    { import = "lazyvim.plugins.extras.lang.json" },
-    { import = "lazyvim.plugins.extras.lang.typescript" },
+    -- Editor plugins
     { import = "lazyvim.plugins.extras.editor.harpoon2" },
-    { import = "lazyvim.plugins.extras.coding.mini-surround" },
-    { import = "lazyvim.plugins.extras.util.mini-hipatterns" },
-    { import = "lazyvim.plugins.extras.dap.core" },
+    { import = "lazyvim.plugins.extras.editor.mini-files" },
+    { import = "lazyvim.plugins.extras.editor.navic" }, -- breadcrumbs estilo WebStorm
+    -- { import = "lazyvim.plugins.extras.editor.snacks_explorer" },
     { import = "lazyvim.plugins.extras.editor.snacks_picker" },
-    -- { import = "lazyvim.plugins.extras.editor.fzf" },
-    { import = "lazyvim.plugins.extras.coding.mini-surround" },
-    { import = "lazyvim.plugins.extras.util.mini-hipatterns" },
+
+    -- Debgugging plugins
     { import = "lazyvim.plugins.extras.dap.core" },
+
+    -- Formatting plugins
+    { import = "lazyvim.plugins.extras.lang.typescript.biome" },
+    { import = "lazyvim.plugins.extras.formatting.prettier" },
+
+    -- Linting plugins
+    { import = "lazyvim.plugins.extras.linting.eslint" },
+
+    -- Language support plugins
+    { import = "lazyvim.plugins.extras.lang.json" },
     { import = "lazyvim.plugins.extras.lang.markdown" },
-    { import = "lazyvim.plugins.extras.editor.snacks_picker" },
+    { import = "lazyvim.plugins.extras.lang.go" },
+    { import = "lazyvim.plugins.extras.lang.python" },
+
+    -- Testing plugins (neotest) — <leader>t* correr tests, <leader>td debuggearlos con dap
+    { import = "lazyvim.plugins.extras.test.core" },
+
+    -- Coding plugins
+    { import = "lazyvim.plugins.extras.coding.mini-surround" },
+    { import = "lazyvim.plugins.extras.editor.mini-diff" },
+    { import = "lazyvim.plugins.extras.coding.blink" },
+
+    -- Utility plugins
+    { import = "lazyvim.plugins.extras.util.mini-hipatterns" },
+
+    -- AI plugins
+    { import = "lazyvim.plugins.extras.ai.copilot" },
 
     -- Import/override with your plugins
     { import = "plugins" },
@@ -62,7 +94,6 @@ require("lazy").setup({
     -- version = "*", -- Try installing the latest stable version for plugins that support semver
   },
   install = { colorscheme = { "tokyonight", "habamax" } }, -- Specify colorschemes to install
-  colorscheme = { "tokyonight", "habamax" }, -- Specify custom colorschemes
   checker = { enabled = true }, -- Automatically check for plugin updates
   performance = {
     rtp = {
