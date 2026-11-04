@@ -1,167 +1,216 @@
--- This file contains the configuration for various UI-related plugins in Neovim.
+local mode = {
+  "mode",
+  fmt = function(s)
+    local mode_map = {
+      ["NORMAL"] = "N",
+      ["O-PENDING"] = "N?",
+      ["INSERT"] = "I",
+      ["VISUAL"] = "V",
+      ["V-BLOCK"] = "VB",
+      ["V-LINE"] = "VL",
+      ["V-REPLACE"] = "VR",
+      ["REPLACE"] = "R",
+      ["COMMAND"] = "!",
+      ["SHELL"] = "SH",
+      ["TERMINAL"] = "T",
+      ["EX"] = "X",
+      ["S-BLOCK"] = "SB",
+      ["S-LINE"] = "SL",
+      ["SELECT"] = "S",
+      ["CONFIRM"] = "Y?",
+      ["MORE"] = "M",
+    }
+    return mode_map[s] or s
+  end,
+}
 
-vim.api.nvim_set_hl(0, "SnacksDashboardHeader", { fg = "#ff69b4", bold = true }) -- color rosa
+local function codecompanion_adapter_name()
+  local chat = require("codecompanion").buf_get_chat(vim.api.nvim_get_current_buf())
+  if not chat then
+    return nil
+  end
+  return " " .. chat.adapter.formatted_name
+end
+
+local function codecompanion_current_model_name()
+  local chat = require("codecompanion").buf_get_chat(vim.api.nvim_get_current_buf())
+  if not chat then
+    return nil
+  end
+  return chat.settings.model
+end
+
 return {
+  { "folke/todo-comments.nvim", version = "*" },
 
-  -- Plugin: noice.nvim
-  -- URL: https://github.com/folke/noice.nvim
-  -- Description: A Neovim plugin for enhancing the command-line UI.
   {
-    "folke/noice.nvim",
-    config = function()
-      require("noice").setup({
-        cmdline = {
-          view = "cmdline", -- Use the cmdline view for the command-line
-        },
-        presets = {
-          bottom_search = true, -- Enable bottom search view
-          command_palette = true, -- Enable command palette view
-          lsp_doc_border = true, -- Enable LSP documentation border
-        },
-        -- Uncomment the following lines to customize the cmdline popup view
-        -- views = {
-        --   cmdline_popup = {
-        --     filter_options = {},
-        --     win_options = {
-        --       winhighlight = "NormalFloat:NormalFloat,FloatBorder:FloatBorder",
-        --     },
-        --   },
-        -- },
-      })
-    end,
+    "folke/which-key.nvim",
+    event = "VeryLazy",
+    opts = { preset = "classic", win = { border = "single" } },
   },
 
-  -- Plugin: nvim-docs-view
-  -- URL: https://github.com/amrbashir/nvim-docs-view
-  -- Description: A Neovim plugin for viewing documentation.
   {
     "amrbashir/nvim-docs-view",
-    lazy = true, -- Load this plugin lazily
-    cmd = "DocsViewToggle", -- Command to toggle the documentation view
+    lazy = true,
+    cmd = "DocsViewToggle",
+    opts = { position = "right", width = 60 },
+  },
+
+  -- Noice — reemplaza cmdline, messages y notifications con una UI moderna
+  {
+    "folke/noice.nvim",
+    event = "VeryLazy",
+    dependencies = { "MunifTanjim/nui.nvim" },
     opts = {
-      position = "right", -- Position the documentation view on the right
-      width = 60, -- Set the width of the documentation view
+      lsp = {
+        override = {
+          ["vim.lsp.util.convert_input_to_markdown_lines"] = true,
+          ["vim.lsp.util.stylize_markdown"] = true,
+          ["cmp.entry.get_documentation"] = true,
+        },
+      },
+      presets = {
+        bottom_search = true,
+        command_palette = true,
+        long_message_to_split = true,
+        inc_rename = true,
+      },
     },
   },
 
-  -- Plugin: lualine.nvim
-  -- URL: https://github.com/nvim-lualine/lualine.nvim
-  -- Description: A blazing fast and easy to configure Neovim statusline plugin.
+  -- mini.animate — scroll suave y animaciones de ventana
+  {
+    "nvim-mini/mini.animate",
+    event = "VeryLazy",
+    opts = {
+      scroll = { enable = false },
+      cursor = { enable = false },
+      resize = { enable = false },
+      open = { enable = false },
+      close = { enable = false },
+    },
+  },
+
+  -- lualine
   {
     "nvim-lualine/lualine.nvim",
-    event = "VeryLazy", -- Load this plugin on the 'VeryLazy' event
-    requires = { "nvim-tree/nvim-web-devicons", opt = true }, -- Optional dependency for icons
+    event = "VeryLazy",
+    requires = { "nvim-tree/nvim-web-devicons", opt = true },
     opts = {
       options = {
-        theme = "auto",
-        icons_enabled = true, -- Enable icons in the statusline
+        theme = "gentleman-kanagawa-blur",
+        icons_enabled = true,
       },
       sections = {
-        lualine_a = {
-          {
-            "mode", -- Display the current mode
-            icon = "󱗞", -- Set the icon for the mode
+        lualine_a = { { "mode", icon = "󱗞" } },
+      },
+      extensions = {
+        "quickfix",
+        {
+          filetypes = { "oil" },
+          sections = {
+            lualine_a = { mode },
+            lualine_b = {
+              function()
+                local ok, oil = pcall(require, "oil")
+                if not ok then
+                  return ""
+                end
+                local path = vim.fn.fnamemodify(oil.get_current_dir(), ":~")
+                return path .. " %m"
+              end,
+            },
+          },
+        },
+        {
+          filetypes = { "codecompanion" },
+          sections = {
+            lualine_a = { mode },
+            lualine_b = { codecompanion_adapter_name },
+            lualine_c = { codecompanion_current_model_name },
+            lualine_x = {},
+            lualine_y = { "progress" },
+            lualine_z = { "location" },
+          },
+          inactive_sections = {
+            lualine_a = {},
+            lualine_b = { codecompanion_adapter_name },
+            lualine_c = {},
+            lualine_x = {},
+            lualine_y = { "progress" },
+            lualine_z = {},
           },
         },
       },
     },
   },
-  {
-    "folke/which-key.nvim",
-    event = "VeryLazy",
-    opts = {
-      preset = "classic",
-      win = { border = "single" },
-    },
-  },
-  -- {
-  --   "LazyVim/LazyVim",
-  --   opts = {
-  --     colorscheme = "tokyonight-night",
-  --     lazy = true,
-  --   },
-  -- },
 
-  -- Plugin: incline.nvim
-  -- URL: https://github.com/b0o/incline.nvim
-  -- Description: A Neovim plugin for showing the current filename in a floating window.
+  -- incline — filename flotante por ventana
   {
     "b0o/incline.nvim",
-    event = "BufReadPre", -- Load this plugin before reading a buffer
-    priority = 1200, -- Set the priority for loading this plugin
+    event = "BufReadPre",
+    priority = 1200,
     config = function()
       require("incline").setup({
-        window = { margin = { vertical = 0, horizontal = 1 } }, -- Set the window margin
-        hide = {
-          cursorline = true, -- Hide the incline window when the cursorline is active
-        },
+        window = { margin = { vertical = 0, horizontal = 1 } },
+        hide = { cursorline = true },
         render = function(props)
-          local filename = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(props.buf), ":t") -- Get the filename
+          local filename = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(props.buf), ":t")
           if vim.bo[props.buf].modified then
-            filename = "[+] " .. filename -- Indicate if the file is modified
+            filename = "[+] " .. filename
           end
-
-          local icon, color = require("nvim-web-devicons").get_icon_color(filename) -- Get the icon and color for the file
-          return { { icon, guifg = color }, { " " }, { filename } } -- Return the rendered content
+          local icon, color = require("nvim-web-devicons").get_icon_color(filename)
+          return { { icon, guifg = color }, { " " }, { filename } }
         end,
       })
     end,
   },
 
-  -- Plugin: mini.nvim
-  -- URL: https://github.com/echasnovski/mini.nvim
-  -- Description: A collection of minimal, fast, and modular Lua plugins for Neovim.
-  {
-    "echasnovski/mini.nvim",
-    version = false, -- Use the latest version
-    config = function()
-      require("mini.animate").setup({
-        resize = {
-          enable = false, -- Disable resize animations
-        },
-        open = {
-          enable = false, -- Disable open animations
-        },
-        close = {
-          enable = false, -- Disable close animations
-        },
-        scroll = {
-          enable = false, -- Disable scroll animations
-        },
-      })
-    end,
-  },
-
-  -- Plugin: zen-mode.nvim
-  -- URL: https://github.com/folke/zen-mode.nvim
-  -- Description: A Neovim plugin for distraction-free coding.
+  -- zen mode
   {
     "folke/zen-mode.nvim",
-    cmd = "ZenMode", -- Command to toggle Zen Mode
+    cmd = "ZenMode",
     opts = {
       plugins = {
-        gitsigns = true, -- Enable gitsigns integration
-        tmux = true, -- Enable tmux integration
-        kitty = { enabled = false, font = "+2" }, -- Disable kitty integration and set font size
-        twilight = { enabled = true }, -- Enable twilight integration
+        gitsigns = true,
+        tmux = true,
+        kitty = { enabled = false, font = "+2" },
+        twilight = { enabled = true },
       },
     },
-    keys = { { "<leader>z", "<cmd>ZenMode<cr>", desc = "Zen Mode" } }, -- Keybinding to toggle Zen Mode
+    keys = { { "<leader>z", "<cmd>ZenMode<cr>", desc = "Zen Mode" } },
   },
 
-  -- Plugin: snacks.nvim
-  -- URL: https://github.com/folke/snacks.nvim/tree/main
-  -- Description: A Neovim plugin for creating a customizable dashboard.
-
+  -- snacks
   {
     "folke/snacks.nvim",
+    keys = {
+      {
+        "<leader>fb",
+        function()
+          Snacks.picker.buffers()
+        end,
+        desc = "Find Buffers",
+      },
+    },
     opts = {
+      notifier = {},
+      image = {},
+      picker = {
+        exclude = { ".git", "node_modules" },
+        matcher = {
+          fuzzy = true,
+          smartcase = true,
+          ignorecase = true,
+          filename_bonus = true,
+        },
+      },
       dashboard = {
         sections = {
           { section = "header" },
-          { icon = " ", title = "Keymaps", section = "keys", indent = 2, padding = 1 },
-          { icon = " ", title = "Recent Files", section = "recent_files", indent = 2, padding = 1 },
-          { icon = " ", title = "Projects", section = "projects", indent = 2, padding = 1 },
+          { icon = " ", title = "Keymaps", section = "keys", indent = 2, padding = 1 },
+          { icon = " ", title = "Recent Files", section = "recent_files", indent = 2, padding = 1 },
+          { icon = " ", title = "Projects", section = "projects", indent = 2, padding = 1 },
           { section = "startup" },
         },
         preset = {
@@ -174,34 +223,21 @@ return {
           \ \____/\ \__/.\_\\ \_\ \_\ /\____\\ \__\
             \/___/  \/__/\/_/ \/_/\/_/ \/____/ \/__/
           ]],
-        -- stylua: ignore
-        ---@type snacks.dashboard.Item[]
-        ---@class snacks.bigfile.Config
-
-        keys = {
-          { icon = " ", key = "f", desc = "Find File", action = ":lua Snacks.dashboard.pick('files')" },
-          { icon = " ", key = "n", desc = "New File", action = ":ene | startinsert" },
-          { icon = " ", key = "g", desc = "Find Text", action = ":lua Snacks.dashboard.pick('live_grep')" },
-          { icon = " ", key = "r", desc = "Recent Files", action = ":lua Snacks.dashboard.pick('oldfiles')" },
-          { icon = " ", key = "c", desc = "Config", action = ":lua Snacks.dashboard.pick('files', {cwd = vim.fn.stdpath('config')})" },
-          { icon = " ", key = "s", desc = "Restore Session", section = "session" },
-          { icon = " ", key = "x", desc = "Lazy Extras", action = ":LazyExtras" },
-          { icon = "󰒲 ", key = "l", desc = "Lazy", action = ":Lazy" },
-          { icon = " ", key = "q", desc = "Quit", action = ":qa" },
-        },
-          {
-            notify = true, -- show notification when big file detected
-            size = 1.5 * 1024 * 1024, -- 1.5MB
-            -- Enable or disable features when big file detected
-            ---@param ctx {buf: number, ft:string}
-            setup = function(ctx)
-              vim.cmd([[NoMatchParen]])
-              Snacks.util.wo(0, { foldmethod = "manual", statuscolumn = "", conceallevel = 0 })
-              vim.b.minianimate_disable = true
-              vim.schedule(function()
-                vim.bo[ctx.buf].syntax = ctx.ft
-              end)
-            end,
+          keys = {
+            { icon = " ", key = "ff", desc = "Find File", action = ":lua Snacks.dashboard.pick('files')" },
+            { icon = " ", key = "n", desc = "New File", action = ":ene | startinsert" },
+            { icon = " ", key = "g", desc = "Find Text", action = ":lua Snacks.dashboard.pick('live_grep')" },
+            { icon = " ", key = "r", desc = "Recent Files", action = ":lua Snacks.dashboard.pick('oldfiles')" },
+            {
+              icon = " ",
+              key = "c",
+              desc = "Config",
+              action = ":lua Snacks.dashboard.pick('files', {cwd = vim.fn.stdpath('config')})",
+            },
+            { icon = " ", key = "s", desc = "Restore Session", section = "session" },
+            { icon = " ", key = "x", desc = "Lazy Extras", action = ":LazyExtras" },
+            { icon = "󰒲 ", key = "l", desc = "Lazy", action = ":Lazy" },
+            { icon = " ", key = "q", desc = "Quit", action = ":qa" },
           },
         },
       },

@@ -1,60 +1,58 @@
--- This file contains the configuration overrides for specific Neovim plugins.
-
 return {
-  -- Change configuration for trouble.nvim
+  -- Project panel estilo WebStorm: sigue el archivo activo y se refresca solo
   {
-    -- Plugin: trouble.nvim
-    -- URL: https://github.com/folke/trouble.nvim
-    -- Description: A pretty list for showing diagnostics, references, telescope results, quickfix and location lists.
-    "folke/trouble.nvim",
-    -- Options to be merged with the parent specification
-    opts = { use_diagnostic_signs = true }, -- Use diagnostic signs for trouble.nvim
-  },
-
-  -- Add symbols-outline.nvim plugin
-  {
-    -- Plugin: symbols-outline.nvim
-    -- URL: https://github.com/simrat39/symbols-outline.nvim
-    -- Description: A tree like view for symbols in Neovim using the Language Server Protocol.
-    "simrat39/symbols-outline.nvim",
-    cmd = "SymbolsOutline", -- Command to open the symbols outline
-    keys = { { "<leader>cs", "<cmd>SymbolsOutline<cr>", desc = "Symbols Outline" } }, -- Keybinding to open the symbols outline
-    config = true, -- Use default configuration
-  },
-
-  -- Remove inlay hints from default configuration
-  {
-    -- Plugin: nvim-lspconfig
-    -- URL: https://github.com/neovim/nvim-lspconfig
-    -- Description: Quickstart configurations for the Neovim LSP client.
-    "neovim/nvim-lspconfig",
-    events = "VeryLazy", -- Load this plugin on the 'VeryLazy' event
+    "nvim-neo-tree/neo-tree.nvim",
     opts = {
-      inlay_hints = { enabled = false }, -- Disable inlay hints
+      filesystem = {
+        follow_current_file = { enabled = true },
+        use_libuv_file_watcher = true,
+      },
+      window = { width = 32 },
+    },
+  },
+
+  -- Diagnostics mejorados
+  {
+    "folke/trouble.nvim",
+    opts = { use_diagnostic_signs = true },
+  },
+
+  -- Symbols outline — reemplaza symbols-outline.nvim (abandonado)
+  -- Más rápido, activamente mantenido, integra con snacks/telescope
+  {
+    "stevearc/aerial.nvim",
+    dependencies = { "nvim-treesitter/nvim-treesitter", "nvim-tree/nvim-web-devicons" },
+    cmd = "AerialToggle",
+    keys = { { "<leader>cs", "<cmd>AerialToggle<cr>", desc = "Symbols Outline (Aerial)" } },
+    opts = {
+      layout = { default_direction = "right" },
+      attach_mode = "global",
+    },
+  },
+
+  -- LSP config
+  {
+    "neovim/nvim-lspconfig",
+    event = "VeryLazy",
+    opts = {
+      inlay_hints = { enabled = false },
       servers = {
         angularls = {
-          -- Configuration for Angular Language Server
           root_dir = function(fname)
-            return require("lspconfig.util").root_pattern("angular.json", "project.json")(fname) -- Set root directory based on angular.json or project.json
+            return require("lspconfig.util").root_pattern("angular.json", "project.json")(fname)
           end,
+        },
+        nil_ls = {
+          cmd = { "nil" },
+          autostart = true,
+          mason = false,
+          settings = {
+            ["nil"] = {
+              formatting = { command = { "nixpkgs-fmt" } },
+            },
+          },
         },
       },
     },
-  },
-  -- add vue-language-server
-  {
-    "neovim/nvim-lspconfig",
-    opts = function(_, opts)
-      table.insert(opts.servers.vtsls.filetypes, "vue")
-      LazyVim.extend(opts.servers.vtsls, "settings.vtsls.tsserver.globalPlugins", {
-        {
-          name = "@vue/typescript-plugin",
-          location = LazyVim.get_pkg_path("vue-language-server", "/node_modules/@vue/language-server"),
-          languages = { "vue" },
-          configNamespace = "typescript",
-          enableForWorkspaceTypeScriptVersions = true,
-        },
-      })
-    end,
   },
 }
