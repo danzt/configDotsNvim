@@ -114,10 +114,11 @@ local function open_panel(focus)
     map("x", function() S.since = os.time() render() end, "Clear list")
     map("q", function() M.close() end, "Close")
   end
-  vim.cmd("botright 14split")
+  -- Dock mode (the dedicated edits tab) pins the tree as a left sidebar; otherwise a bottom split.
+  vim.cmd(S.dock and "topleft 34vsplit" or "botright 14split")
   S.win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(S.win, S.buf)
-  for k, v in pairs({ number = false, relativenumber = false, signcolumn = "no", wrap = false, cursorline = true, winfixheight = true, list = false }) do
+  for k, v in pairs({ number = false, relativenumber = false, signcolumn = "no", wrap = false, cursorline = true, winfixheight = not S.dock, winfixwidth = S.dock or false, list = false }) do
     vim.wo[S.win][k] = v
   end
   render()
@@ -168,7 +169,11 @@ end
 
 function M.setup()
   vim.fn.mkdir(STATE_DIR, "p")
-  S.since = os.time() -- start fresh each nvim session; ignore edits from before
+  -- CLAUDE_EDITS_TAB=1 (see claude/edits-nvim): this nvim is the dedicated edits tab next to a Claude pane.
+  -- It docks the tree on the left, keeps the history of the last 12h and starts the claudecode.nvim
+  -- server so Claude's /ide can connect and send its diffs here.
+  S.dock = vim.env.CLAUDE_EDITS_TAB == "1"
+  S.since = os.time() - (S.dock and 12 * 3600 or 0) -- otherwise start fresh each nvim session
   S.count = 0
   local w = uv.new_fs_event()
   w:start(STATE_DIR, {}, function(err, name)
@@ -182,6 +187,12 @@ function M.setup()
     vim.notify("Claude follow: " .. (S.follow and "on" or "off"))
   end, { desc = "Toggle auto-open of files Claude edits" })
   vim.keymap.set("n", "<leader>ae", M.toggle, { desc = "Claude edited files" })
+  if S.dock then
+    vim.schedule(function()
+      pcall(function() require("lazy").load({ plugins = { "claudecode.nvim" } }) end)
+      open_panel(false)
+    end)
+  end
   vim.api.nvim_create_user_command("ClaudeEdits", M.toggle, { desc = "Toggle the Claude edited files tree" })
 end
 

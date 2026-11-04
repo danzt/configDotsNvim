@@ -5,13 +5,14 @@ local M = {}
 
 local uv = vim.uv or vim.loop
 local DIR = (vim.env.XDG_STATE_HOME or (vim.env.HOME .. "/.local/state")) .. "/claude-state"
-local WIDTH = 36
+-- The rail scales with the screen: a fifth of the columns, between 24 and 36.
+local function W() return math.max(24, math.min(36, math.floor(vim.o.columns * 0.2))) end
 local SPIN = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 
 local FLOWER = { "✿", "❀", "❁", "❃" }
 local function tick() return math.floor((vim.uv or vim.loop).hrtime() / 1.5e8) end
 
-local S = { sess = nil, git = { branch = "", files = 0, add = 0, del = 0, list = {} }, win = nil, buf = nil, auto = true, flow = { branches = {}, prs = {} } }
+local S = { sess = nil, git = { branch = "", files = 0, add = 0, del = 0, list = {} }, win = nil, buf = nil, auto = false, fold = {}, flow = { branches = {}, prs = {} } }
 
 -- Colors come from the active colorscheme; every group carries the panel background so the
 -- header and rail read as solid blocks (Gentle Shell "float" style).
@@ -174,25 +175,29 @@ local function trunc(str, n)
 end
 
 -- A row is a list of { text, group } chunks; the rail buffer is built from them.
-local BAR = "▎"
+-- IDE-style sections (Gentle Shell "panel"): a one-row header `▾ Name … count` that collapses
+-- its body when clicked, with dense rows indented under it.
+local INDENT = "  "
 
-local function panel(title, subtitle, tone, body, glyph)
-  local rows = {}
-  local bar = { BAR .. " ", tone }
-  rows[#rows + 1] = { bar }
-  local head = { bar, { (glyph or "✿") .. " " .. title, "RailAccent" } }
-  if subtitle and subtitle ~= "" then
-    head[#head + 1] = { " · ", "RailMuted" }
-    head[#head + 1] = { subtitle, "RailMuted" }
+local function panel(id, title, count, tone, body)
+  local open = not S.fold[id]
+  local head = { { (open and "▾ " or "▸ ") .. title, "RailAccent" } }
+  if count and count ~= "" then
+    local room = W() - 1 - vim.fn.strdisplaywidth(head[1][1]) - 2
+    count = trunc(count, math.max(room, 1))
+    local pad = W() - 1 - vim.fn.strdisplaywidth(head[1][1]) - vim.fn.strdisplaywidth(count)
+    head[#head + 1] = { (" "):rep(math.max(pad, 1)), "RailText" }
+    head[#head + 1] = { count, tone }
   end
-  rows[#rows + 1] = head
-  rows[#rows + 1] = { bar }
-  for _, r in ipairs(body) do
-    local row = { bar, { " ", "RailText" } }
-    for _, c in ipairs(r) do row[#row + 1] = c end
-    rows[#rows + 1] = row
+  head.id = id
+  local rows = { head }
+  if open then
+    for _, r in ipairs(body) do
+      local row = { { INDENT, "RailText" } }
+      for _, c in ipairs(r) do row[#row + 1] = c end
+      rows[#rows + 1] = row
+    end
   end
-  rows[#rows + 1] = { bar }
   rows[#rows + 1] = {}
   return rows
 end
@@ -204,7 +209,7 @@ end
 local function card()
   local s = S.sess
   local st = s and s.status or {}
-  local inner = WIDTH - 5
+  local inner = W() - 4
   local tone, label = "RailMuted", "no session"
   if s then
     if s.state == "working" then tone, label = "RailWork", SPIN[tick() % #SPIN + 1] .. " working" .. (s.tool and (" · " .. s.tool) or "")
@@ -221,9 +226,7 @@ local function card()
     local c = st.ctx >= 80 and "RailWait" or (st.ctx >= 50 and "RailWork" or "RailOk")
     status[#status + 1] = { { ("%-8s"):format("Context"), "RailMuted" }, { gauge(st.ctx, 8), c }, { (" %d%%"):format(st.ctx), "RailMuted" } }
   end
-  if st.cost then status[#status + 1] = kv("Cost", ("$%.2f"):format(st.cost)) end
-  local working = s and s.state == "working"
-  local rows = panel("Status", label, tone, status, working and FLOWER[tick() % #FLOWER + 1] or nil)
+  local rows = panel("status", "Status", label, tone, status)
 
   local g = S.git
   local body = {}
@@ -237,7 +240,7 @@ local function card()
   end
   if #body == 0 then body[1] = { { "clean", "RailMuted" } } else body[#body + 1] = { { "<leader>ae to browse", "RailMuted" } } end
   local sub = #g.list == 0 and "" or ("%d file%s · +%d -%d"):format(#g.list, #g.list == 1 and "" or "s", g.add, g.del)
-  vim.list_extend(rows, panel("Changes", sub, "RailAccent", body))
+  vim.list_extend(rows, panel("changes", "Changes", sub, "RailAccent", body))
 
   local todos = s and s.todos or {}
   if #todos > 0 then
@@ -249,7 +252,7 @@ local function card()
       elseif t.status == "in_progress" then icon, grp = "●", "RailWork" end
       tb[#tb + 1] = { { icon .. " ", grp }, { trunc(t.content or "", inner - 2), grp } }
     end
-    vim.list_extend(rows, panel("Todos", ("%d of %d"):format(done, #todos), "RailAccent", tb))
+    vim.list_extend(rows, panel("todos", "Todos", ("%d/%d"):format(done, #todos), "RailAccent", tb))
   end
 
   local agents = s and s.agents or {}
@@ -258,7 +261,7 @@ local function card()
     for _, a in ipairs(agents) do
       ab[#ab + 1] = { { SPIN[(tick() + #ab) % #SPIN + 1] .. " ", "RailWork" }, { trunc(a.kind .. " · " .. (a.desc ~= "" and a.desc or "working"), inner - 2), "RailText" } }
     end
-    vim.list_extend(rows, panel("Agents", ("%d running"):format(#agents), "RailWork", ab))
+    vim.list_extend(rows, panel("agents", "Agents", ("%d running"):format(#agents), "RailWork", ab))
   end
 
   local jobs = s and s.jobs or {}
@@ -267,7 +270,20 @@ local function card()
     for _, j in ipairs(jobs) do
       jb[#jb + 1] = { { "▸ ", "RailWork" }, { trunc(j.cmd, inner - 2), "RailText" } }
     end
-    vim.list_extend(rows, panel("Jobs", ("%d background"):format(#jobs), "RailAccent", jb))
+    vim.list_extend(rows, panel("jobs", "Jobs", ("%d background"):format(#jobs), "RailAccent", jb))
+  end
+
+  if st.r5 or st.r7 or st.cost or st.added then
+    local ub = {}
+    local function meter(label, pct)
+      local c = pct >= 95 and "RailWait" or (pct >= 80 and "RailWork" or "RailOk")
+      ub[#ub + 1] = { { ("%-4s"):format(label), "RailMuted" }, { gauge(pct, 8), c }, { (" %d%%"):format(pct), "RailMuted" } }
+    end
+    if st.r5 then meter("5h", st.r5) end
+    if st.r7 then meter("7d", st.r7) end
+    if st.cost then ub[#ub + 1] = kv("Cost", ("$%.2f"):format(st.cost)) end
+    if st.added or st.removed then ub[#ub + 1] = { { ("%-8s"):format("Lines"), "RailMuted" }, { "+" .. (st.added or 0), "RailOk" }, { " -" .. (st.removed or 0), "RailWait" } } end
+    vim.list_extend(rows, panel("usage", "Usage", st.r5 and ("5h %d%%"):format(st.r5) or "", "RailAccent", ub))
   end
 
   local fl = S.flow
@@ -282,7 +298,7 @@ local function card()
       if pr.ci == "ok" then icon, grp = "✓", "RailOk" elseif pr.ci == "fail" then icon, grp = "✗", "RailWait" elseif pr.ci == "wait" then icon, grp = "…", "RailWork" end
       gb[#gb + 1] = { { icon .. " ", grp }, { ("#%d "):format(pr.number), "RailAccent" }, { trunc(pr.title, inner - 8), pr.isDraft and "RailMuted" or "RailText" } }
     end
-    vim.list_extend(rows, panel("Git", #fl.prs > 0 and ("%d PR%s"):format(#fl.prs, #fl.prs == 1 and "" or "s") or "branches", "RailBranch", gb))
+    vim.list_extend(rows, panel("git", "Git", #fl.prs > 0 and ("%d PR%s"):format(#fl.prs, #fl.prs == 1 and "" or "s") or "branches", "RailBranch", gb))
   end
 
   local m = S.music
@@ -297,7 +313,7 @@ local function card()
   else
     mbody = { { { "nothing is playing", "RailMuted" } }, { { "<leader>ym to start", "RailMuted" } } }
   end
-  vim.list_extend(rows, panel("Music", m and m.running and (playing and "playing" or "paused") or "", playing and "RailOk" or "RailMuted", mbody))
+  vim.list_extend(rows, panel("music", "Music", m and m.running and (playing and "playing" or "paused") or "", playing and "RailOk" or "RailMuted", mbody))
   return rows
 end
 
@@ -309,7 +325,9 @@ local function draw_rail()
   if not rail_open() then return end
   local rows = card()
   local lines, spans = {}, {}
+  S.hdr = {}
   for i, row in ipairs(rows) do
+    if row.id then S.hdr[i] = row.id end
     local text, col = "", 0
     for _, c in ipairs(row) do
       spans[#spans + 1] = { i - 1, col, col + #c[1], c[2] }
@@ -326,9 +344,38 @@ local function draw_rail()
   end
 end
 
+local function toggle_fold(id)
+  if not id then return end
+  S.fold[id] = not S.fold[id] or nil
+  draw_rail()
+end
+
 local function zen_active()
   local z = package.loaded.snacks and Snacks.zen and Snacks.zen.win
   return z and z.valid and z:valid() or false
+end
+
+-- Keep the editor and Claude at half each of what the rail leaves free (the rail is a fixed-width split
+-- carved out of Claude's window, which would otherwise end up narrower than the editor).
+local function balance()
+  local cw = claude_wins()[1]
+  if not cw or #claude_wins() > 1 or zen_active() then return end
+  local rail = 0
+  if rail_open() then
+    rail = W()
+    pcall(vim.api.nvim_win_set_width, S.win, rail)
+  end
+  pcall(vim.api.nvim_win_set_width, cw, math.floor((vim.o.columns - rail - (rail > 0 and 2 or 1)) / 2))
+end
+
+-- Narrow screens keep the space for the editor and Claude: the rail hides itself (until the screen grows
+-- again) unless it was toggled by hand.
+local function narrow() return vim.o.columns < 140 end
+
+local function want_open()
+  -- The dedicated edits tab has no Claude pane and the standalone rail covers the status.
+  return vim.env.CLAUDE_EDITS_TAB ~= "1" and S.auto and (S.sess or #claude_wins() > 0 or vim.fs.root(uv.cwd(), ".git") ~= nil)
+    and not rail_open() and not zen_active() and not narrow()
 end
 
 local function open_rail()
@@ -340,18 +387,25 @@ local function open_rail()
   -- A real split (not a float): nvim reserves its width, so text wraps before reaching it and
   -- other widgets can be stacked in this column later. It sits just left of the Claude window.
   local cw = claude_wins()[1]
-  S.win = vim.api.nvim_open_win(S.buf, false, cw and { split = "left", win = cw, width = WIDTH } or { split = "right", win = -1, width = WIDTH })
+  S.win = vim.api.nvim_open_win(S.buf, false, cw and { split = "left", win = cw, width = W() } or { split = "right", win = -1, width = W() })
   for k, v in pairs({ number = false, relativenumber = false, signcolumn = "no", foldcolumn = "0", statuscolumn = "",
     cursorline = false, list = false, wrap = false, winfixwidth = true, spell = false, winbar = "" }) do
     vim.wo[S.win][k] = v
   end
   vim.wo[S.win].winhighlight = "Normal:RailPanel,NormalNC:RailPanel,EndOfBuffer:RailPanel"
+  -- Clicking a header folds its section; the mapping runs before focus moves, so the cursor stays put.
+  vim.keymap.set("n", "<LeftMouse>", function()
+    local m = vim.fn.getmousepos()
+    if m.winid == S.win then toggle_fold(S.hdr and S.hdr[m.line]) end
+  end, { buffer = S.buf, silent = true })
   draw_rail()
+  balance()
 end
 
 local function close_rail()
   if rail_open() then pcall(vim.api.nvim_win_close, S.win, true) end
   S.win = nil
+  balance()
 end
 
 function M.toggle_rail()
@@ -361,6 +415,7 @@ end
 
 -- Zen mode takes the whole width: hide the rail while it is active, bring it back after.
 local function sync_zen()
+  if S.auto and narrow() and rail_open() then close_rail() balance() end
   if zen_active() then
     if rail_open() then S.zen_hid = true close_rail() end
   elseif S.zen_hid then
@@ -380,7 +435,7 @@ local function refresh()
   load_session()
   load_git()
   apply_winbar()
-  if S.auto and (S.sess or #claude_wins() > 0 or vim.fs.root(uv.cwd(), ".git") ~= nil) and not rail_open() and not zen_active() then open_rail() end
+  if want_open() then open_rail() end
   draw_rail()
   pcall(vim.cmd, "redrawstatus!")
 end
@@ -406,8 +461,9 @@ function M.setup()
       end
     end,
   })
+  vim.api.nvim_create_autocmd({ "TermOpen", "VimResized" }, { callback = function() vim.schedule(balance) end })
   vim.api.nvim_create_autocmd({ "TermOpen", "WinEnter", "WinNew", "WinClosed", "BufWinEnter", "VimResized" }, {
-    callback = function() vim.schedule(function() apply_winbar() if S.auto and (S.sess or #claude_wins() > 0 or vim.fs.root(uv.cwd(), ".git") ~= nil) and not rail_open() and not zen_active() then open_rail() end draw_rail() sync_zen() end) end,
+    callback = function() vim.schedule(function() apply_winbar() if want_open() then open_rail() end draw_rail() sync_zen() end) end,
   })
 
   local w = uv.new_fs_event()
@@ -466,6 +522,11 @@ function M.setup()
   vim.keymap.set("n", "<leader>yp", function() ctl(S.music and S.music.playing and "pause" or "play") end, { desc = "Music: play/pause" })
   vim.keymap.set("n", "<leader>yx", function() ctl("stop") end, { desc = "Music: stop" })
 
+  vim.keymap.set("n", "<leader>as", function()
+    local ids = {}
+    for _, id in ipairs({ "status", "changes", "todos", "agents", "jobs", "usage", "git", "music" }) do ids[#ids + 1] = id end
+    vim.ui.select(ids, { prompt = "Fold rail section", format_item = function(i) return (S.fold[i] and "▸ " or "▾ ") .. i end }, toggle_fold)
+  end, { desc = "Fold/unfold a rail section" })
   vim.keymap.set("n", "<leader>aR", M.toggle_rail, { desc = "Claude rail (status/changes/todos)" })
   refresh()
 end
