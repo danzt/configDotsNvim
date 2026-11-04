@@ -4,7 +4,7 @@
 
 keybinds clear-defaults=true {
     locked {
-        bind "Ctrl Alt g" { SwitchToMode "normal"; }
+        bind "Ctrl g" { SwitchToMode "normal"; }
     }
     pane {
         bind "left" { MoveFocus "left"; }
@@ -222,6 +222,9 @@ keybinds clear-defaults=true {
     shared_among "normal" "resize" "tab" "scroll" "prompt" "tmux" {
         bind "p" { SwitchToMode "pane"; }
     }
+    shared_among "normal" "resize" "tab" "scroll" "prompt" "tmux" {
+        bind "o" { SwitchToMode "session"; }
+    }
     shared_except "locked" "resize" "pane" "tab" "entersearch" "renametab" "renamepane" {
         bind "r" { SwitchToMode "resize"; }
     }
@@ -308,6 +311,20 @@ themes {
         white "#8D909D"
     } 
 
+    kanagawa_wave {
+        fg "#DCD7BA"
+        bg "#1F1F28"
+        red "#C34043"
+        green "#76946A"
+        yellow "#C0A36E"
+        blue "#7E9CD8"
+        magenta "#957FB8"
+        cyan "#6A9589"
+        orange "#FFA066"
+        black "#1F1F28"
+        white "#DCD7BA"
+    }
+
     everforest {
         fg "#d3c6aa"
         bg "#282828"
@@ -321,10 +338,52 @@ themes {
         black "#1a1a1a"
         white "#8D908D"
     }
+
+    rose_pine_moon {
+        fg "#e0def4"        // light text
+        bg "#191724"        // dark background
+        red "#eb6f92"       // refined pink
+        green "#31748f"     // soft teal
+        yellow "#f6c177"    // soft yellow
+        blue "#9ccfd8"      // sky blue
+        magenta "#c4a7e7"   // soft purple
+        cyan "#9ccfd8"      // same as sky blue for consistency
+        orange "#f6c177"    // same as soft yellow
+        black "#191724"     // darker background (almost black)
+        white "#e0def4"     // same as light text
+    }
+
+    sakura {
+      fg "#c5a3a9"        // na: main text
+      bg "#1c1a1c"        // bl: dark background
+      red "#2B1720"       // ia: pink
+      green "#878fb9"     // va: blue
+      yellow "#9e97d0"    // ca: purple (replaces yellow)
+      blue "#878fb9"      // va: blue
+      magenta "#9e97d0"   // ca: purple
+      cyan "#878fb9"      // va: blue
+      orange "#9e97d0"    // ca: purple
+      black "#1c1a1c"     // bl: background
+      white "#c5a3a9"     // na: light text
+    }
+
+    oldWorld {
+      fg "#C9C7CD"        // na: main text (light gray)
+      bg "#000000"        // bl: dark background (almost black)
+      red "#EA83A5"       // ia: intense pink
+      green "#90B99F"     // va: soft green
+      yellow "#E6B99D"    // ca: beige (replaces yellow)
+      blue "#85B5BA"      // va: blue-green
+      magenta "#92A2D5"   // ca: lavender blue
+      cyan "#85B5BA"      // va: blue-green
+      orange "#F5A191"    // ca: light peach
+      black "#000000"     // bl: dark background (almost black)
+      white "#C9C7CD"     // na: light text (light gray)
+    }
 }
 
-theme "kanagawa_dragon"
- 
+theme "kanagawa_wave"
+
 // Choose the base input mode of zellij.
 // Default: normal
 // 
@@ -340,9 +399,9 @@ default_mode "locked"
 // default_cwd "/tmp"
  
 // The name of the default layout to load on startup
-// Default: "work"
+// Default: "work_oldWorld"
 // 
-default_layout "work"
+default_layout "work_kanagawa"
  
 // The folder in which Zellij will look for layouts
 // (Requires restart)
@@ -400,6 +459,13 @@ default_layout "work"
 // the stdin of the program to perform the copy. This can be used with
 // terminal emulators which do not support the OSC 52 ANSI control sequence
 // that will be used by default if this option is not set.
+//
+// NOTE: If copy/paste isn't working, uncomment the line matching your system:
+// - Linux X11: uncomment "xclip" line AND set copy_clipboard "primary"
+// - Linux Wayland: uncomment "wl-copy" line
+// - macOS: uncomment "pbcopy" line
+// See: https://zellij.dev/documentation/faq.html#copy--paste-isnt-working-how-can-i-fix-this
+//
 // Examples:
 //
 // copy_command "xclip -selection clipboard" // x11
@@ -424,7 +490,7 @@ default_layout "work"
  
 // Path to the default editor to use to edit pane scrollbuffer
 // Default: $EDITOR or $VISUAL
-// scrollback_editor "/usr/bin/vim"
+scrollback_editor "nvim"
  
 // A fixed name to always give the Zellij session.
 // Consider also setting `attach_to_session true,`
@@ -489,3 +555,6 @@ default_layout "work"
 // Default: true (if the host terminal supports it)
 // 
 // support_kitty_keyboard_protocol false
+
+// Default shell (configured by Gentleman.Dots)
+default_shell "zsh"
