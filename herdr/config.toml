@@ -5,22 +5,32 @@ onboarding = false
 # This file is copied into ~/.config/herdr/config.toml during installation.
 
 [theme]
-# Use a built-in dark theme with neutral foregrounds so Herdr does not inherit
-# Ghostty bright-black selected rows or Kanagawa's warm/yellow label text.
-name = "rose-pine-dawn"
-
+# Matches the nvim tokyonight colorscheme.
+name = "tokyo-night"
 auto_switch = false
+
 [theme.custom]
-panel_bg = "#06080f"
-# Match Pi's Gentle theme, with a muted cyan for Herdr chrome.
-accent = "#6FA0AF"
-green = "#B7CC85"
-blue = "#6FA0AF"
-red = "#CB7C94"
-yellow = "#DEBA87"
+panel_bg = "reset"          # let the terminal background show through
+sidebar_bg = "#16161e"
+active_row_bg = "#1f2335"
+selection_bg = "#292e42"
+accent = "#7aa2f7"
+green = "#9ece6a"
+blue = "#7aa2f7"
+red = "#f7768e"
+yellow = "#e0af68"
 
 [ui]
-accent = "#6FA0AF"
+accent = "#7aa2f7"
+pane_borders = true
+pane_outer_borders = true
+tab_bar_position = "bottom"
+tab_bar_right = [
+  { type = "zoom" },
+  { type = "hostname" },
+  { type = "datetime", format = "%a %d %b  %H:%M" },
+]
+tab_bar_right_separator = "  ·  "
 
 # Sidebar hidden by default (zero width) to save space on the laptop screen.
 # Toggle it with prefix+b.
