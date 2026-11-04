@@ -9,7 +9,7 @@
 #
 let dark_theme = {
     # color for nushell primitives
-    separator: "#c5c9c5"                  # dragonWhite, color claro suave
+    separator: "#c5c9c5"                   # dragonWhite, color claro suave
     leading_trailing_space_bg: { attr: n } # no fg, no bg, attr none effectively turns this off
     header: "#87a987_bold"                 # dragonGreen, verde pastel bold
     empty: "#8992a7"                       # dragonViolet, púrpura suave
@@ -910,3 +910,7 @@ def start_multiplexer [] {
 }
 
 start_multiplexer
+
+# NVM Configuration for Nushell - Node.js 20.18.0 by default
+$env.NVM_DIR = ($env.HOME | path join ".nvm")
+$env.PATH = ($env.PATH | prepend ($env.NVM_DIR | path join "versions/node/v20.18.0/bin"))
