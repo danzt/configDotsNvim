@@ -1,0 +1,27 @@
+
+# credentials, caches and machine-local state
+firebase/
+configstore/
+github-copilot/
+gh/
+coc/
+jgit/
+uv/
+yarn/
+znt/
+.DS_Store
+**/.DS_Store
+*.bak
+*.bak-*
+*.backup
+*Zone.Identifier
+fish/fish_variables
+fish/completions/
+karabiner/automatic_backups/
+herdr/*.log
+herdr/*.sock*
+herdr/session*
+herdr/release-notes.json
+nvim/spell/
+nvim-old/
+nvim.principal/
